@@ -34,7 +34,14 @@ data DeletionStatus a = NotFound |
                         DeletedLeaf |
                         DeletedChild |
                         ResizedChild { newChild :: Node a } |
-                        Complete
+                        Complete deriving (Show)
+
+instance Eq (DeletionStatus a) where
+    NotFound == NotFound = True
+    DeletedChild == DeletedChild = True
+    DeletedLeaf == DeletedLeaf = True
+    Complete == Complete = True
+    _ == _ = False -- Could do something with ResizedChild, but IDK
 
 -- INSERT
 insert :: Node a -> BS.ByteString -> a -> Int -> IO (Node a)
@@ -48,9 +55,10 @@ insert leaf@(Leaf k l) key val depth = do
   -- Make new parent
   _newParent <- newNode4
   let newParent = _newParent{prefix = sharedPrefixVector, prefixLen = (fromIntegral pLen)}
-  addChild newParent (BS.index k (depth + pLen)) leaf
-  addChild newParent (BS.index key (depth + pLen)) (Leaf key val)
-  return newParent
+  setChild newParent (BS.index k (depth + pLen)) leaf
+  -- _newParent <- superAddChild newParent (BS.index k (depth + pLen)) leaf
+  __newParent <- superAddChild newParent (BS.index key (depth + pLen)) (Leaf key val)
+  return __newParent
 insert node key val depth = do
   pLen <- checkPrefix node key depth
   let prefixLength = min (fromIntegral $ prefixLen node) maxPrefixSize
@@ -58,13 +66,15 @@ insert node key val depth = do
     False -> do -- Prefix length mismatch! Split the prefix and add a new node
       _newNode <- newNode4
       let sharedPrefixVector = UMV.take pLen (prefix node)
-      let newNode = _newNode{prefix = sharedPrefixVector, prefixLen = (fromIntegral pLen)}
-      addChild newNode (BS.index key (depth + pLen)) (Leaf key val)
+      let __newNode = _newNode{prefix = sharedPrefixVector, prefixLen = (fromIntegral pLen)}
+      -- addChild newNode (BS.index key (depth + pLen)) (Leaf key val)
+      newNode <- superAddChild __newNode (BS.index key (depth + pLen)) (Leaf key val)
       let sharedPrefixVector = UMV.drop pLen (prefix node)
       let newChild = node{ prefixLen = fromIntegral $ (prefixLen node) - (fromIntegral $ pLen + 1), prefix = sharedPrefixVector}
       newKey <- UMV.read (prefix newChild) 0
-      addChild newNode newKey newChild
-      return newNode
+      -- addChild newNode newKey newChild
+      finalNode <- superAddChild newNode newKey newChild
+      return finalNode
     True -> do -- No length mismatch, this is correct so far
       let newDepth = fromIntegral $ depth + (fromIntegral $ prefixLen node)
       let keyByte = BS.index key newDepth
@@ -72,6 +82,7 @@ insert node key val depth = do
       case (ix) of
         Just i -> do
           childKey <- UMV.read (partialKeys node) i
+          -- print $ "attempting to get child at index, key: " ++ (show i) ++ " " ++ (show childKey)
           child <- fmap fromJust (maybeGetChild node childKey)
           case child of
             Empty -> do -- If child is empty, replace with Leaf
@@ -81,20 +92,29 @@ insert node key val depth = do
               newChild <- insert l key val (depth + 1)
               MV.write (pointers node) i newChild
               return node
-            _ -> do -- If child is node, check size, prepare to grow it if necessary
-              full <- wouldBeFull child keyByte
-              case full of
-                True -> do
-                  newChild <- growNode child
-                  newChild <- insert newChild key val (depth + 1)
-                  MV.write (pointers node) i newChild
-                  return node
-                False -> do
-                  insert child key val (depth + 1)
-                  return node
+            _ -> do -- If child is node, check size, prepare to grow it if necessary -- actually, do this elsewhere
+                newestChild <- insert child key val (depth + 1)
+                MV.write (pointers node) i newestChild
+                return node
+            --   full <- wouldBeFull child keyByte
+            --   case full of
+            --     True -> do
+            --       newChild <- growNode child
+            --       newChild <- insert newChild key val (depth + 1)
+            --       MV.write (pointers node) i newChild
+            --       return node
+            --     False -> do
+            --       insert child key val (depth + 1)
+            --       return node
         Nothing -> do -- New thing!
-          addChild node (BS.index key newDepth) (Leaf key val)
-          return node
+          -- print $ "adding new thing at depth: " ++ (show newDepth)
+          -- print $ "key: " ++ (show $ BS.index key newDepth)
+          -- print $"new thing! " ++ (show key) ++ " " ++ (show val) 
+          superAddChild node (BS.index key newDepth) (Leaf key val)
+        --   full <- isFull node
+        --   newNode <- if full then growNode node else return node
+        --   addChild newNode (BS.index key newDepth) (Leaf key val)
+        --   return newNode
 
 -- SEARCH
 search :: Node a -> BS.ByteString -> Int -> IO (Node a)
