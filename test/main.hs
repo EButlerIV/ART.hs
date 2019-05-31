@@ -50,12 +50,12 @@ main = hspec $ do
                 (isNode16 node) `shouldBe` True
 
             it "should grow to 48 if more than 16 nodes inserted" $ do
-                let kv = map (\i -> (BS.pack $ show i, i)) [1..17]
+                let kv = map (\i -> (BS.pack $ show i, i)) ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "a", "b", "c", "d", "e", "f", "g"]
                 node <- foldM (\n (k, v) -> insert n k v 0) Empty kv
                 (isNode48 node) `shouldBe` True
 
             it "should grow to 256 if more than 48 nodes inserted" $ do
-                let kv = map (\i -> (BS.pack $ show i, i)) [1..49]
+                let kv = map (\i -> (BS.pack $ show i, i)) (['0'..'z'])
                 node <- foldM (\n (k, v) -> insert n k v 0) Empty kv
                 (isNode256 node) `shouldBe` True
 

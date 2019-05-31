@@ -64,10 +64,7 @@ itemIs v i k = do
 shouldShrink :: Node a -> IO Bool
 shouldShrink Empty = return False
 shouldShrink (Leaf _ _) = return False
-shouldShrink (Node4 pk _ _ _) = do
-    item <- UMV.read pk 1
-    print $ "item? " ++ (show item)
-    (itemIs pk 1 0) >>= return
+shouldShrink (Node4 pk _ _ _) = (itemIs pk 1 0) >>= return
 shouldShrink (Node16 pk _ _ _) = (itemIs pk 5 0) >>= return
 shouldShrink (Node48 pk _ _ _) = (itemIs pk 17 0) >>= return
 shouldShrink (Node256 pk _ _ _) = (itemIs pk 49 0) >>= return
