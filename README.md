@@ -1,7 +1,7 @@
 # ART.hs
 Adaptive Radix Tree implementation
 
-##TODO:
+##TODO: 
   X Figure out collapsing one-child nodes
   X Cabalize project
   * Add different node types /w performance optimizations
