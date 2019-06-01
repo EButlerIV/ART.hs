@@ -13,10 +13,13 @@ import qualified Data.Vector.Unboxed.Mutable as UMV
 maxPrefixSize :: Int
 maxPrefixSize = 8
 
-data Node a = Node4 { partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
-              Node16 { partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
-              Node48 { partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
-              Node256 { partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
+-- In the paper, Node16 does special SIMD stuff, but I haven't implemented that yet.
+-- Node48 has a key vector size 48, but child vector size 256.
+-- Node256 has no key vector, as child vector is size of key space.
+data Node a = Node4 { keyCount :: Word8, partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
+              Node16 { keyCount :: Word8, partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
+              Node48 { keyCount :: Word8, partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
+              Node256 { keyCount :: Word8, pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
               Leaf BS.ByteString a |
               Empty
 
@@ -33,41 +36,88 @@ newNode4 = do
   k <- UMV.new 4
   v <- MV.replicate 4 Empty
   p <- UMV.new maxPrefixSize
-  return $ Node4 k v 0 p
+  return $ Node4 0 k v 0 p
 
 newNode16 :: IO (Node a)
 newNode16 = do
   k <- UMV.new 16
   v <- MV.replicate 16 Empty
   p <- UMV.new maxPrefixSize
-  return $ Node16 k v 0 p
+  return $ Node16 0 k v 0 p
 
 newNode48 :: IO (Node a)
 newNode48 = do
   k <- UMV.new 48
   v <- MV.replicate 48 Empty
   p <- UMV.new maxPrefixSize
-  return $ Node48 k v 0 p
+  return $ Node48 0 k v 0 p
 
 newNode256 :: IO (Node a)
 newNode256 = do
-  k <- UMV.new 256
   v <- MV.replicate 256 Empty
   p <- UMV.new maxPrefixSize
-  return $ Node256 k v 0 p
+  return $ Node256 0 v 0 p
 
-itemIs :: UMV.IOVector Word8 -> Int -> Word8 -> IO Bool
-itemIs v i k = do
-  item <- UMV.read v i
-  return $ item == k
+-- | getChild - Retrieves child from node for the given key, if it exists
+-- Question: Is it worth it to keep the maybe, or acceptable to return an Empty node in all not found cases?
+getChild :: Node a -> Word8 -> IO (Maybe (Node a))
+getChild Empty _ = return Nothing
+getChild (Leaf _ _) _ = return Nothing
+getChild (Node256 numChildren children _ _) key = if numChildren == 0 then return Nothing else do
+  c <- MV.read children (fromIntegral key)
+  if c == Empty then return Nothing else return (Just c)
+getChild node@(Node48 numChildren keys children _ _) key = if numChildren == 0 then return Nothing else do
+  ix <- keyIndex node key -- TODO: superfluous index read, just return child 
+  case (ix) of
+    Nothing -> return $ Nothing
+    Just i -> do
+      c <- MV.read children (fromIntegral key)
+      if c == Empty then return Nothing else return (Just c)
+getChild node key = do
+    ix <- keyIndex node key
+    case (ix) of
+      Nothing -> return $ Nothing
+      Just i -> do
+        c <- MV.read (pointers node) i
+        return $ Just c
+
+-- | setChild adds node as child of other node, will overwrite previous child if key is the same.
+-- | It assumes the node is not full.
+setChild :: Node a -> Word8 -> Node a -> IO ()
+setChild Empty _ _ = undefined
+setChild (Leaf _ _ ) _ _ = undefined
+setChild parent key child = do
+    ix <- keyIndex parent key
+    case ix of
+        Nothing -> do
+            frzKey <- UV.freeze $ partialKeys parent
+            frzChildren <- V.freeze $ pointers parent
+            let (prefix, suffix) = UV.span (\x -> if key == 0 then False else x < key && x /= 0) frzKey
+            let (prefixC, suffixC) = V.splitAt (UV.length prefix) frzChildren
+            newKeys <- UV.thaw $ UV.concat [prefix, UV.singleton key, suffix]
+            newChildren <- V.thaw $ V.concat [prefixC, pure child, suffixC]
+            UMV.copy (partialKeys parent) (UMV.init newKeys)
+            MV.copy (pointers parent) (MV.init newChildren)
+            return ()
+        Just i -> do
+            MV.write (pointers parent) i child
+
+-- | removeChild checks to see if key is present in node, deletes child if key exists, returns if key existed
+removeChild :: Node a -> Word8 -> IO Bool
+removeChild Empty _ = undefined
+removeChild (Leaf _ _) = undefined
+removeChild (Node256 ct children _ _ _) = do
+  c <- MV.read children (fromIntegral key)
+  if c == Empty then return False else do
+    
 
 shouldShrink :: Node a -> IO Bool
 shouldShrink Empty = return False
 shouldShrink (Leaf _ _) = return False
-shouldShrink (Node4 pk _ _ _) = (itemIs pk 1 0) >>= return
-shouldShrink (Node16 pk _ _ _) = (itemIs pk 5 0) >>= return
-shouldShrink (Node48 pk _ _ _) = (itemIs pk 17 0) >>= return
-shouldShrink (Node256 pk _ _ _) = (itemIs pk 49 0) >>= return
+shouldShrink (Node4 ct _ _ _ _) = ct < 2
+shouldShrink (Node16 ct _ _ _ _) = ct < 5
+shouldShrink (Node48 ct _ _ _ _) = ct < 17
+shouldShrink (Node256 ct _ _ _) = ct < 49
 
 isFull :: Node a -> IO Bool
 isFull Empty = return True
@@ -82,72 +132,38 @@ isFull n = do
 keyIndex :: Node a -> Word8 -> IO (Maybe Int) -- TODO: Use binary search maybe. Not sure of the performance implications when arrays so short
 keyIndex node key = do
     keys <- UV.freeze $ partialKeys node
-    children <- V.freeze $ pointers node
-    -- print $ "finding index for " ++ (show key) ++ " " ++ (show $ UV.findIndex (== key) keys)
-    -- print $ (show keys)
     let ix = UV.findIndex (== key) keys
     case ix of
         Nothing -> return Nothing
         Just i -> return $ if key == 0 && i /= 0 then Nothing else (Just i)
-    -- print $ (show children)
-    -- return $ 
---                     keys <- mapM (\i -> UMV.read keyVector i) [0..(keysLength - 1)]
---                     return $ L.elemIndex key keys
---   where keyVector = partialKeys node
---         keysLength = UMV.length keyVector
 
-maybeGetChild :: Node a -> Word8 -> IO (Maybe (Node a))
-maybeGetChild node key = do
-  ix <- keyIndex node key
-  case (ix) of
-    Nothing -> return $ Nothing
-    Just i -> do
-      -- print $ "found index: " ++ (show i)
-      c <- MV.read (pointers node) i
-      -- print $ "found child? " ++ (show c)
-      return $ Just c
+-- maybeGetChild :: Node a -> Word8 -> IO (Maybe (Node a))
+-- maybeGetChild node key = do
+--   ix <- keyIndex node key
+--   case (ix) of
+--     Nothing -> return $ Nothing
+--     Just i -> do
+--       -- print $ "found index: " ++ (show i)
+--       c <- MV.read (pointers node) i
+--       -- print $ "found child? " ++ (show c)
+--       return $ Just c
 
 
-addChild :: Node a -> Word8 -> Node a -> IO ()
-addChild parent key child = do
-    -- print "adding to node"
-    (UV.freeze $ partialKeys parent) >>= (print)
-    parentKeys <- mapM (\i -> UMV.read (partialKeys parent) i) [0..(keysLength - 1)]
-    children <- mapM (\i -> MV.read (pointers parent) i) [0..(keysLength - 1)]
-    let (f, s) = L.splitAt 1 $ ((zip parentKeys children) ++ [(key, child)])
-    let pairs = f ++ (L.sortOn fst $ filter (\(x, _) -> x /= 0) s)
-    mapM_ (\i -> do
-                    print $ "writing index " ++ (show i) ++ " " ++ (show $ fst $ pairs !! i)
-                    UMV.write (partialKeys parent) i (fst $ pairs !! i)
-                    MV.write (pointers parent) i (snd $ pairs !! i)
-          ) [0..(L.length pairs) - 1]
-    return ()
-  where keysLength = UMV.length (partialKeys parent)
-
-setChild :: Node a -> Word8 -> Node a -> IO () -- Assumes not full, will be different for each node type
-setChild Empty _ _ = undefined
-setChild (Leaf _ _ ) _ _ = undefined
-setChild parent key child = do
-    ix <- keyIndex parent key
-    case ix of
-        Nothing -> do
-            frzKey <- UV.freeze $ partialKeys parent
-            frzChildren <- V.freeze $ pointers parent
-            let (prefix, suffix) = UV.span (\x -> if key == 0 then False else x < key && x /= 0) frzKey
-            -- print $ "new key: " ++ (show key)
-            -- print $ "prefix " ++ (show prefix) ++ " suffix " ++ (show suffix)
-            let (prefixC, suffixC) = V.splitAt (UV.length prefix) frzChildren
-            newKeys <- UV.thaw $ UV.concat [prefix, UV.singleton key, suffix]
-            newChildren <- V.thaw $ V.concat [prefixC, pure child, suffixC]
-            -- UMV.grow (partialKeys parent) 1
-            -- print $ "keys length " ++ (show $ UMV.length newKeys) ++ " " ++ (show $ UMV.length $ partialKeys parent)
-            -- print $ show $ UV.concat [prefix, UV.singleton key, suffix]
-            UMV.copy (partialKeys parent) (UMV.init newKeys)
-            -- MV.grow (pointers parent) 1
-            MV.copy (pointers parent) (MV.init newChildren)
-            return ()
-        Just i -> do
-            MV.write (pointers parent) i child
+-- addChild :: Node a -> Word8 -> Node a -> IO ()
+-- addChild parent key child = do
+--     -- print "adding to node"
+--     (UV.freeze $ partialKeys parent) >>= (print)
+--     parentKeys <- mapM (\i -> UMV.read (partialKeys parent) i) [0..(keysLength - 1)]
+--     children <- mapM (\i -> MV.read (pointers parent) i) [0..(keysLength - 1)]
+--     let (f, s) = L.splitAt 1 $ ((zip parentKeys children) ++ [(key, child)])
+--     let pairs = f ++ (L.sortOn fst $ filter (\(x, _) -> x /= 0) s)
+--     mapM_ (\i -> do
+--                     print $ "writing index " ++ (show i) ++ " " ++ (show $ fst $ pairs !! i)
+--                     UMV.write (partialKeys parent) i (fst $ pairs !! i)
+--                     MV.write (pointers parent) i (snd $ pairs !! i)
+--           ) [0..(L.length pairs) - 1]
+--     return ()
+--   where keysLength = UMV.length (partialKeys parent)
 
             
 
@@ -168,21 +184,18 @@ growNode :: Node a -> IO (Node a)
 growNode Empty = newNode4
 growNode (Leaf k l) = newNode4
 growNode (Node4 pk po pl p) = do
-  -- print "growing node 4"
   nPk <- UMV.grow pk 12
   nP <- MV.grow po 12
   return $ Node16 nPk nP pl p
 growNode (Node16 pk po pl p) = do
-  -- print "growing node 16"
   nPk <- UMV.grow pk 32
   nP <- MV.grow po 32
   return $ Node48 nPk nP pl p
 growNode (Node48 pk po pl p) = do
-  -- print "growing node 48"
   nPk <- UMV.grow pk 208
   nP <- MV.grow po 208
   return $ Node256 nPk nP pl p
-growNode n@(Node256 pk po pl p) = return n -- ???
+growNode n@(Node256 pk po pl p) = return n
 
 shrinkNode :: Node a -> IO (Node a)
 shrinkNode Empty = return Empty
