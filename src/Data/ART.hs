@@ -148,7 +148,10 @@ remove node key depth = do
     True -> do
       let newDepth = depth + (fromIntegral $ prefixLen node)
       let thisKey = (BS.index key newDepth)
+      -- print $ "deleting key " ++ (show thisKey) ++ " the depth " ++ (show newDepth)
+      -- print $ "node: " ++ (show node)
       next <- maybeGetChild node thisKey
+      -- print $ "next? " ++ (show next)
       ix <- keyIndex node thisKey
       case next of
         Nothing -> return NotFound
@@ -157,6 +160,7 @@ remove node key depth = do
           let keyIndex = fromJust ix
           case removeStatus of
             NotFound -> return NotFound
+            DeletedChild -> return Complete
             DeletedLeaf -> do
               let keysLength = UMV.length $ partialKeys node
               -- Remove and shift keys

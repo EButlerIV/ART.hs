@@ -13,10 +13,10 @@ import qualified Data.Vector.Unboxed.Mutable as UMV
 maxPrefixSize :: Int
 maxPrefixSize = 8
 
-data Node a = Node4 { partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
-              Node16 { partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
-              Node48 { partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
-              Node256 { partialKeys :: (UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: Word8, prefix :: (UMV.IOVector Word8) } |
+data Node a = Node4 { partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
+              Node16 { partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
+              Node48 { partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
+              Node256 { partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
               Leaf BS.ByteString a |
               Empty
 
@@ -103,26 +103,28 @@ maybeGetChild node key = do
     Nothing -> return $ Nothing
     Just i -> do
       -- print $ "found index: " ++ (show i)
-      c <- MV.read (pointers node) i
+      c <- catch (MV.read (pointers node) i) (\e -> do
+        print $ show (e :: ErrorCall)
+        return Empty)
       -- print $ "found child? " ++ (show c)
       return $ Just c
 
 
-addChild :: Node a -> Word8 -> Node a -> IO ()
-addChild parent key child = do
-    -- print "adding to node"
-    (UV.freeze $ partialKeys parent) >>= (print)
-    parentKeys <- mapM (\i -> UMV.read (partialKeys parent) i) [0..(keysLength - 1)]
-    children <- mapM (\i -> MV.read (pointers parent) i) [0..(keysLength - 1)]
-    let (f, s) = L.splitAt 1 $ ((zip parentKeys children) ++ [(key, child)])
-    let pairs = f ++ (L.sortOn fst $ filter (\(x, _) -> x /= 0) s)
-    mapM_ (\i -> do
-                    print $ "writing index " ++ (show i) ++ " " ++ (show $ fst $ pairs !! i)
-                    UMV.write (partialKeys parent) i (fst $ pairs !! i)
-                    MV.write (pointers parent) i (snd $ pairs !! i)
-          ) [0..(L.length pairs) - 1]
-    return ()
-  where keysLength = UMV.length (partialKeys parent)
+-- addChild :: Node a -> Word8 -> Node a -> IO ()
+-- addChild parent key child = do
+--     -- print "adding to node"
+--     (UV.freeze $ partialKeys parent) >>= (print)
+--     parentKeys <- mapM (\i -> UMV.read (partialKeys parent) i) [0..(keysLength - 1)]
+--     children <- mapM (\i -> MV.read (pointers parent) i) [0..(keysLength - 1)]
+--     let (f, s) = L.splitAt 1 $ ((zip parentKeys children) ++ [(key, child)])
+--     let pairs = f ++ (L.sortOn fst $ filter (\(x, _) -> x /= 0) s)
+--     mapM_ (\i -> do
+--                     print $ "writing index " ++ (show i) ++ " " ++ (show $ fst $ pairs !! i)
+--                     UMV.write (partialKeys parent) i (fst $ pairs !! i)
+--                     MV.write (pointers parent) i (snd $ pairs !! i)
+--           ) [0..(L.length pairs) - 1]
+--     return ()
+--   where keysLength = UMV.length (partialKeys parent)
 
 setChild :: Node a -> Word8 -> Node a -> IO () -- Assumes not full, will be different for each node type
 setChild Empty _ _ = undefined
