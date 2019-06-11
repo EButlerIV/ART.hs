@@ -30,6 +30,11 @@ library
 benchmark bench
     type:       exitcode-stdio-1.0
     main-is:    bench/main.hs
+    ghc-options:
+      -O2
+      -fprof-auto
+      -prof
+      "-with-rtsopts=-p"
     build-depends:      base >=4.12 && <4.13,
                         bytestring >= 0.10.8.2,
                         criterion >= 1.5.5.0,

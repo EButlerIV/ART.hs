@@ -79,10 +79,11 @@ isFull n = do
     return 0)
   return $ k /= 0
 
+{-# NOINLINE keyIndex #-}
 keyIndex :: Node a -> Word8 -> IO (Maybe Int) -- TODO: Use binary search maybe. Not sure of the performance implications when arrays so short
 keyIndex node key = do
-    keys <- UV.freeze $ partialKeys node
-    children <- V.freeze $ pointers node
+    keys <- UV.unsafeFreeze $ partialKeys node -- TODO: audit that this is actually safe
+    children <- V.unsafeFreeze $ pointers node
     -- print $ "finding index for " ++ (show key) ++ " " ++ (show $ UV.findIndex (== key) keys)
     -- print $ (show keys)
     let ix = UV.findIndex (== key) keys
