@@ -162,21 +162,22 @@ remove node key depth = do
             NotFound -> return NotFound
             DeletedChild -> return Complete
             DeletedLeaf -> do
-              let keysLength = UMV.length $ partialKeys node
-              -- Remove and shift keys
-              mapM_ (\i -> if i < keyIndex
-                           then return ()
-                           else if i == keysLength - 1
-                                then UMV.write (partialKeys node) i 0
-                                else (UMV.read (partialKeys node) (i + 1)) >>= (\k -> UMV.write (partialKeys node) i k)
-                    ) [0..(keysLength - 1)]
-              -- Remove and shift pointers
-              mapM_ (\i -> if i < keyIndex
-                           then return ()
-                           else if i == keysLength - 1
-                                then MV.write (pointers node) i Empty
-                                else (MV.read (pointers node) (i + 1)) >>= (\k -> MV.write (pointers node) i k)
-                    ) [0..(keysLength - 1)]
+              unsetChild node thisKey
+              -- let keysLength = UMV.length $ partialKeys node
+              -- -- Remove and shift keys
+              -- mapM_ (\i -> if i < keyIndex
+              --              then return ()
+              --              else if i == keysLength - 1
+              --                   then UMV.write (partialKeys node) i 0
+              --                   else (UMV.read (partialKeys node) (i + 1)) >>= (\k -> UMV.write (partialKeys node) i k)
+              --       ) [0..(keysLength - 1)]
+              -- -- Remove and shift pointers
+              -- mapM_ (\i -> if i < keyIndex
+              --              then return ()
+              --              else if i == keysLength - 1
+              --                   then MV.write (pointers node) i Empty
+              --                   else (MV.read (pointers node) (i + 1)) >>= (\k -> MV.write (pointers node) i k)
+              --       ) [0..(keysLength - 1)]
               s <- shouldShrink node
               case s of
                 False -> return $ DeletedChild

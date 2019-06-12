@@ -135,6 +135,7 @@ setChild parent key child = do
     case ix of
         Nothing -> do
             frzKey <- UV.freeze $ partialKeys parent
+            -- let (pKeys, sKeys) = UV.span (\x -> if key == 0 then False else x < key && x /= 0) (partialKeys parent)
             frzChildren <- V.freeze $ pointers parent
             let (prefix, suffix) = UV.span (\x -> if key == 0 then False else x < key && x /= 0) frzKey
             -- print $ "new key: " ++ (show key)
@@ -152,6 +153,23 @@ setChild parent key child = do
         Just i -> do
             MV.write (pointers parent) i child
 
+unsetChild :: Node a -> Word8 -> IO ()
+unsetChild Empty _ = return ()
+unsetChild (Leaf _ _) _ = return ()
+unsetChild node key = do
+  frzKey <- UV.freeze $ partialKeys node
+  frzChildren <- V.freeze $ pointers node
+  let (prefix, suffix) = UV.span (\x -> if key == 0 then False else x < key && x /= 0) frzKey
+  case (UV.length prefix == UV.length frzKey) of
+    True -> return ()
+    False -> do
+      let i = (UV.length prefix)
+      let (p, s) = V.splitAt i frzChildren
+      newKeys <- UV.thaw $ UV.concat [if i == 0 then prefix else UV.init prefix, if i == 0 then UV.init suffix else suffix, UV.singleton 0]
+      newChildren <- V.thaw $ V.concat [if i == 0 then p else V.init p, if i == 0 then V.init s else s, V.singleton Empty]
+      UMV.copy (partialKeys node) newKeys
+      MV.copy (pointers node) newChildren
+      return ()
             
 
 superAddChild :: Node a -> Word8 -> Node a -> IO (Node a) -- Returns node (useful for if growth must occur)
