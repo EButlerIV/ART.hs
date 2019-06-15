@@ -30,7 +30,7 @@ setupOtherEnv = do
     let kvs = map (\x -> (zip (map fromIntegral [0..x-1]) (take x randomKeys))) ([3, 15, 41, 255])
     return (randomKeys, kvs)
 
-setupFullNodes :: IO (Node BS.ByteString, Node BS.ByteString, Node BS.ByteString, Node BS.ByteString)
+setupFullNodes :: IO (Node BS.ByteString, Node BS.ByteString, Node BS.ByteString, Node BS.ByteString, [[(Word8, BS.ByteString)]])
 setupFullNodes = do
     randomKeys <- mapM random (take 100 $ repeat 10)
     let kvs = map (\x -> (zip (map fromIntegral [0..x-1]) (take x randomKeys))) ([3, 15, 41, 255])
@@ -39,7 +39,7 @@ setupFullNodes = do
     node48 <- newNode48
     node256 <- newNode256
     mapM (\(i, n) -> mapM (\(k, v) -> setChild n k (Leaf v v)) (kvs !! i) ) (zip [0..3] [node4, node16, node48, node256])
-    return (node4, node16, node48, node256)
+    return (node4, node16, node48, node256, kvs)
 
 
 main :: IO ()
@@ -70,13 +70,16 @@ main = defaultMain [
             bench "100 keys length 10 from Map" $ nf (\k -> map (\k -> (Map.delete k fullMap)) k) keys
         ]
     ],
-    env setupOtherEnv $ \ ~(keys, kvs) -> bgroup "small stuff" [
-        bgroup "setChild" [
+    env setupOtherEnv $ \ ~(keys, kvs) -> bgroup "setChild" [
             bench "4 keys into Node4" $ perRunEnv newNode4 $ \n -> mapM (\(k, v) -> setChild n k (Leaf v v) ) (kvs !! 0),
             bench "16 keys into Node16" $ perRunEnv newNode16 $ \n -> (\kv -> mapM (\(k, v) -> setChild n k (Leaf v v)) kv) (kvs !! 1),
             bench "48 keys into Node48" $ perRunEnv newNode48 $ \n -> (\kv -> (mapM (\(k, v) -> setChild n k (Leaf v v)) kv)) (kvs !! 2),
             bench "256 keys into Node256" $ perRunEnv newNode256 $ \n -> (\kv -> (mapM (\(k, v) -> setChild n k (Leaf v v)) kv)) (kvs !! 3)
-        ]
-        -- TODO: Write and test an efficient unset function?
-    ]
+        ]-- ,
+    -- bgroup "unsetChild" [
+    --     bench "4 keys into Node4" $ perRunEnv setupFullNodes $ \(n, _, _, _, kvs) -> mapM (\(k, _) -> unsetChild n k) (kvs !! 0)
+    --     -- bench "16 keys into Node16" $ perRunEnv newNode16 $ \n -> (\kv -> mapM (\(k, v) -> setChild n k (Leaf v v)) kv) (kvs !! 1),
+    --     -- bench "48 keys into Node48" $ perRunEnv newNode48 $ \n -> (\kv -> (mapM (\(k, v) -> setChild n k (Leaf v v)) kv)) (kvs !! 2),
+    --     -- bench "256 keys into Node256" $ perRunEnv newNode256 $ \n -> (\kv -> (mapM (\(k, v) -> setChild n k (Leaf v v)) kv)) (kvs !! 3)
+    -- ]
     ]

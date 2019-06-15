@@ -152,12 +152,12 @@ remove node key depth = do
       -- print $ "node: " ++ (show node)
       next <- maybeGetChild node thisKey
       -- print $ "next? " ++ (show next)
-      ix <- keyIndex node thisKey
+      -- ix <- keyIndex node thisKey
       case next of
         Nothing -> return NotFound
         Just child -> do
           removeStatus <- remove child key (newDepth + 1)
-          let keyIndex = fromJust ix
+          -- let keyIndex = fromJust ix
           case removeStatus of
             NotFound -> return NotFound
             DeletedChild -> return Complete
@@ -185,7 +185,8 @@ remove node key depth = do
                   newNode <- shrinkNode node
                   return $ ResizedChild newNode
             ResizedChild newChild -> do
-              MV.write (pointers node) keyIndex newChild
+              ix <- keyIndex node thisKey
+              MV.write (pointers node) (fromJust ix) newChild
               return Complete
             Complete -> return Complete
 
