@@ -10,6 +10,7 @@ import Control.DeepSeq
 import Data.Word
 import qualified Data.Map.Strict as Map
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString as BS0
 
 import Criterion.Main
 
@@ -41,6 +42,13 @@ setupFullNodes = do
     mapM (\(i, n) -> mapM (\(k, v) -> setChild n k (Leaf v v)) (kvs !! i) ) (zip [0..3] [node4, node16, node48, node256])
     return (node4, node16, node48, node256)
 
+setupFullNode :: IO (Node Word8, [Word8])
+setupFullNode = do
+    randomKey <- random 4
+    let randomKeys = (BS0.unpack randomKey)
+    node4 <- newNode4
+    mapM (\k -> setChild node4 k (Leaf (BS0.pack [k]) k)) randomKeys
+    return (node4, randomKeys)
 
 main :: IO ()
 main = defaultMain [
@@ -76,7 +84,14 @@ main = defaultMain [
             bench "16 keys into Node16" $ perRunEnv newNode16 $ \n -> (\kv -> mapM (\(k, v) -> setChild n k (Leaf v v)) kv) (kvs !! 1),
             bench "48 keys into Node48" $ perRunEnv newNode48 $ \n -> (\kv -> (mapM (\(k, v) -> setChild n k (Leaf v v)) kv)) (kvs !! 2),
             bench "256 keys into Node256" $ perRunEnv newNode256 $ \n -> (\kv -> (mapM (\(k, v) -> setChild n k (Leaf v v)) kv)) (kvs !! 3)
+        ],
+        bgroup "unsetChild" [
+            bench "4 keys from Node4" $ perRunEnv setupFullNode $ \(n, keys) -> mapM (\k -> unsetChild n k) keys,
+            bench "4 keys from Node4 no copy" $ perRunEnv setupFullNode $ \(n, keys) -> mapM (\k -> unsetChildNoCopy n k) keys
+        ],
+        bgroup "keyIndex" [
+            bench "use keyIndex to test node4 for key membership" $ perRunEnv setupFullNode $ \(n, keys) -> mapM (\k -> keyIndex n k) keys,
+            bench "use getIx to test node4 for key membership" $ perRunEnv setupFullNode $ \(n, keys) -> mapM (\k -> getIx (partialKeys n) k) keys
         ]
-        -- TODO: Write and test an efficient unset function?
     ]
     ]

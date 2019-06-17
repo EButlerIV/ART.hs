@@ -1,3 +1,5 @@
+{-# LANGUAGE GADTs #-}
+
 module Data.ART.Node where
 
 import Data.Word
@@ -80,22 +82,20 @@ isFull n = do
   return $ k /= 0
 
 {-# NOINLINE keyIndex #-}
-keyIndex :: Node a -> Word8 -> IO (Maybe Int) -- TODO: Use binary search maybe. Not sure of the performance implications when arrays so short
+keyIndex :: Node a -> Word8 -> IO (Maybe Int)
 keyIndex node key = do
-    keys <- UV.unsafeFreeze $ partialKeys node -- TODO: audit that this is actually safe
+    keys <- UV.unsafeFreeze $ partialKeys node
     children <- V.unsafeFreeze $ pointers node
-    -- print $ "finding index for " ++ (show key) ++ " " ++ (show $ UV.findIndex (== key) keys)
-    -- print $ (show keys)
     let ix = UV.findIndex (== key) keys
     case ix of
         Nothing -> return Nothing
         Just i -> return $ if key == 0 && i /= 0 then Nothing else (Just i)
-    -- print $ (show children)
-    -- return $ 
---                     keys <- mapM (\i -> UMV.read keyVector i) [0..(keysLength - 1)]
---                     return $ L.elemIndex key keys
---   where keyVector = partialKeys node
---         keysLength = UMV.length keyVector
+
+getIx :: UMV.IOVector Word8 -> Word8 -> IO (Maybe Int)
+getIx vec key = go 0
+  where go ix = if ix == (UMV.length vec) then return Nothing else do
+          v <- UMV.read vec ix
+          if v == key then return (Just ix) else go (ix + 1)
 
 maybeGetChild :: Node a -> Word8 -> IO (Maybe (Node a))
 maybeGetChild node key = do
@@ -152,24 +152,78 @@ setChild parent key child = do
             return ()
         Just i -> do
             MV.write (pointers parent) i child
+-- -- (a -> b -> m a) -> a -> UV.Vector b -> m a
+-- lowerKeyIx :: UMV.IOVector Word8 -> Word8 -> IO (Maybe Int)
+-- lowerKeyIx vec key = do
+--     (keyIx, firstBigger) <- foldM (\(i, m) x -> do { v <- UMV.read vec m; if v > key then })
+--   where keyFold = \m@(ix, lastKey) -> if lastKey >= key then return m else do
+--     v <- UMV.read vec ix
+--     case v > key of
+--       True -> return (ix, v)
+--       False -> return (ix + 1, v)
+
+removeIx :: MV.IOVector a -> Int -> a -> IO ()
+removeIx vec index e = do
+  let remain = MV.drop (index + 1) vec
+  let target = MV.init $ MV.drop index vec
+  MV.move target remain
+  MV.write vec ((MV.length vec) - 1) e
+
+removeUIx :: UMV.IOVector Word8 -> Int -> Word8 -> IO ()
+removeUIx vec index e = do
+  let remain = UMV.drop (index + 1) vec
+  let target = UMV.init $ UMV.drop index vec
+  UMV.move target remain
+  UMV.write vec ((UMV.length vec) - 1) e
+
+unsetChildNoCopy :: Node a -> Word8 -> IO ()
+unsetChildNoCopy Empty _ = return ()
+unsetChildNoCopy (Leaf _ _) _ = return ()
+unsetChildNoCopy node key = do
+  maybeIndex <- getIx (partialKeys node) key
+  case maybeIndex of
+    Nothing -> return ()
+    Just index -> if index > 0 && key == (0 :: Word8) then return () else do
+      removeIx (pointers node) index Empty
+      removeUIx (partialKeys node) index 0
 
 unsetChild :: Node a -> Word8 -> IO ()
 unsetChild Empty _ = return ()
 unsetChild (Leaf _ _) _ = return ()
 unsetChild node key = do
-  frzKey <- UV.freeze $ partialKeys node
-  frzChildren <- V.freeze $ pointers node
-  let (prefix, suffix) = UV.span (\x -> if key == 0 then False else x < key && x /= 0) frzKey
-  case (UV.length prefix == UV.length frzKey) of
-    True -> return ()
-    False -> do
-      let i = (UV.length prefix)
-      let (p, s) = V.splitAt i frzChildren
-      newKeys <- UV.thaw $ UV.concat [if i == 0 then prefix else UV.init prefix, if i == 0 then UV.init suffix else suffix, UV.singleton 0]
-      newChildren <- V.thaw $ V.concat [if i == 0 then p else V.init p, if i == 0 then V.init s else s, V.singleton Empty]
-      UMV.copy (partialKeys node) newKeys
-      MV.copy (pointers node) newChildren
+  ix <- keyIndex node key
+  case ix of
+    Nothing -> return ()
+    Just keyIndex -> do
+      let keysLength = UMV.length $ partialKeys node
+      -- Remove and shift keys
+      mapM_ (\i -> if i < keyIndex
+                    then return ()
+                    else if i == keysLength - 1
+                        then UMV.write (partialKeys node) i 0
+                        else (UMV.read (partialKeys node) (i + 1)) >>= (\k -> UMV.write (partialKeys node) i k)
+            ) [0..(keysLength - 1)]
+      -- Remove and shift pointers
+      mapM_ (\i -> if i < keyIndex
+                    then return ()
+                    else if i == keysLength - 1
+                        then MV.write (pointers node) i Empty
+                        else (MV.read (pointers node) (i + 1)) >>= (\k -> MV.write (pointers node) i k)
+            ) [0..(keysLength - 1)]
       return ()
+  -- frzKey <- UV.freeze $ partialKeys node
+  -- frzChildren <- V.freeze $ pointers node
+  -- let (prefix, suffix) = UV.span (\x -> if key == 0 then False else x < key && x /= 0) frzKey
+  -- case (UV.length prefix == UV.length frzKey) of
+  --   True -> return ()
+  --   False -> do
+  --     let i = (UV.length prefix)
+  --     let (p, s) = V.splitAt i frzChildren
+  --     newKeys <- UV.thaw $ UV.concat [if i == 0 then prefix else UV.init prefix, if i == 0 then UV.init suffix else suffix, UV.singleton 0]
+  --     newChildren <- V.thaw $ V.concat [if i == 0 then p else V.init p, if i == 0 then V.init s else s, V.singleton Empty]
+  --     UMV.copy (partialKeys node) newKeys
+  --     MV.copy (pointers node) newChildren
+  --     return ()
             
 
 superAddChild :: Node a -> Word8 -> Node a -> IO (Node a) -- Returns node (useful for if growth must occur)
