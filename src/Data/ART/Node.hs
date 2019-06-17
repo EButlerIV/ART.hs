@@ -3,6 +3,7 @@
 module Data.ART.Node where
 
 import Data.Word
+import Data.IORef
 import Control.Exception
 import qualified Data.List as L
 import qualified Data.ByteString as BS
@@ -15,48 +16,57 @@ import qualified Data.Vector.Unboxed.Mutable as UMV
 maxPrefixSize :: Int
 maxPrefixSize = 8
 
-data Node a = Node4 { partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
-              Node16 { partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
-              Node48 { partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
-              Node256 { partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
+-- Nodes should have slightly different implementations
+-- Node4: equally sized vectors of keys and pointers
+-- Node16: (no) like Node4 but key checking in paper used SIMD tricks I don't want to try to replicate, lol
+-- Node48: (tabled for now) Length 48 vector of sorted keys, length 256 vector of pointers indexed by key instead of index of key in key vector
+-- Node256: (tabled for now) Single vector of just pointers, indexed by key
+data Node a = Node4 { numKeys :: (IORef Word8), partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
+              Node16 { numKeys :: (IORef Word8), partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
+              Node48 { numKeys :: (IORef Word8), partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
+              Node256 { numKeys :: (IORef Word8), partialKeys :: !(UMV.IOVector Word8), pointers :: (MV.IOVector (Node a)), prefixLen :: !Word8, prefix :: !(UMV.IOVector Word8) } |
               Leaf BS.ByteString a |
               Empty
 
 instance Show (Node a) where
     show Empty = "Empty"
     show (Leaf _ _ ) = "Leaf"
-    show (Node4 _ _ _ _ ) = "Node4"
-    show (Node16 _ _ _ _ ) = "Node16"
-    show (Node48 _ _ _ _ ) = "Node48"
-    show (Node256 _ _ _ _ ) = "Node256"
+    show (Node4 _ _ _ _ _ ) = "Node4"
+    show (Node16 _ _ _ _ _ ) = "Node16"
+    show (Node48 _ _ _ _ _ ) = "Node48"
+    show (Node256 _ _ _ _ _ ) = "Node256"
 
 newNode4 :: IO (Node a)
 newNode4 = do
   k <- UMV.new 4
   v <- MV.replicate 4 Empty
   p <- UMV.new maxPrefixSize
-  return $ Node4 k v 0 p
+  c <- newIORef 0
+  return $ Node4 c k v 0 p
 
 newNode16 :: IO (Node a)
 newNode16 = do
   k <- UMV.new 16
   v <- MV.replicate 16 Empty
   p <- UMV.new maxPrefixSize
-  return $ Node16 k v 0 p
+  c <- newIORef 0
+  return $ Node16 c k v 0 p
 
 newNode48 :: IO (Node a)
 newNode48 = do
   k <- UMV.new 48
   v <- MV.replicate 48 Empty
   p <- UMV.new maxPrefixSize
-  return $ Node48 k v 0 p
+  c <- newIORef 0
+  return $ Node48 c k v 0 p
 
 newNode256 :: IO (Node a)
 newNode256 = do
   k <- UMV.new 256
   v <- MV.replicate 256 Empty
   p <- UMV.new maxPrefixSize
-  return $ Node256 k v 0 p
+  c <- newIORef 0
+  return $ Node256 c k v 0 p
 
 itemIs :: UMV.IOVector Word8 -> Int -> Word8 -> IO Bool
 itemIs v i k = do
@@ -66,10 +76,10 @@ itemIs v i k = do
 shouldShrink :: Node a -> IO Bool
 shouldShrink Empty = return False
 shouldShrink (Leaf _ _) = return False
-shouldShrink (Node4 pk _ _ _) = (itemIs pk 1 0) >>= return
-shouldShrink (Node16 pk _ _ _) = (itemIs pk 5 0) >>= return
-shouldShrink (Node48 pk _ _ _) = (itemIs pk 17 0) >>= return
-shouldShrink (Node256 pk _ _ _) = (itemIs pk 49 0) >>= return
+shouldShrink (Node4 _ pk _ _ _) = (itemIs pk 1 0) >>= return
+shouldShrink (Node16 _ pk _ _ _) = (itemIs pk 5 0) >>= return
+shouldShrink (Node48 _ pk _ _ _) = (itemIs pk 17 0) >>= return
+shouldShrink (Node256 _ pk _ _ _) = (itemIs pk 49 0) >>= return
 
 isFull :: Node a -> IO Bool
 isFull Empty = return True
@@ -84,8 +94,9 @@ isFull n = do
 {-# NOINLINE keyIndex #-}
 keyIndex :: Node a -> Word8 -> IO (Maybe Int)
 keyIndex node key = do
-    keys <- UV.unsafeFreeze $ partialKeys node
-    children <- V.unsafeFreeze $ pointers node
+    nK <- readIORef $ numKeys node
+    keys <- UV.unsafeFreeze $ UMV.take (fromIntegral nK) $ partialKeys node
+    -- children <- V.unsafeFreeze $ pointers node
     let ix = UV.findIndex (== key) keys
     case ix of
         Nothing -> return Nothing
@@ -149,6 +160,7 @@ setChild parent key child = do
             UMV.copy (partialKeys parent) (UMV.init newKeys)
             -- MV.grow (pointers parent) 1
             MV.copy (pointers parent) (MV.init newChildren)
+            modifyIORef (numKeys parent) (+1)
             return ()
         Just i -> do
             MV.write (pointers parent) i child
@@ -196,6 +208,7 @@ unsetChild node key = do
     Nothing -> return ()
     Just keyIndex -> do
       let keysLength = UMV.length $ partialKeys node
+      modifyIORef (numKeys node) ((-) 1)
       -- Remove and shift keys
       mapM_ (\i -> if i < keyIndex
                     then return ()
@@ -242,41 +255,41 @@ superAddChild parent key child = do
 growNode :: Node a -> IO (Node a)
 growNode Empty = newNode4
 growNode (Leaf k l) = newNode4
-growNode (Node4 pk po pl p) = do
+growNode (Node4 n pk po pl p) = do
   -- print "growing node 4"
   nPk <- UMV.grow pk 12
   nP <- MV.grow po 12
-  return $ Node16 nPk nP pl p
-growNode (Node16 pk po pl p) = do
+  return $ Node16 n nPk nP pl p
+growNode (Node16 n pk po pl p) = do
   -- print "growing node 16"
   nPk <- UMV.grow pk 32
   nP <- MV.grow po 32
-  return $ Node48 nPk nP pl p
-growNode (Node48 pk po pl p) = do
+  return $ Node48 n nPk nP pl p
+growNode (Node48 n pk po pl p) = do
   -- print "growing node 48"
   nPk <- UMV.grow pk 208
   nP <- MV.grow po 208
-  return $ Node256 nPk nP pl p
-growNode n@(Node256 pk po pl p) = return n -- ???
+  return $ Node256 n nPk nP pl p
+growNode n@(Node256 _ pk po pl p) = return n -- ???
 
 shrinkNode :: Node a -> IO (Node a)
 shrinkNode Empty = return Empty
 shrinkNode (Leaf k l) = return Empty
-shrinkNode (Node4 pk po pl p) = do
+shrinkNode (Node4 n pk po pl p) = do
   val <- MV.read po 0 -- Could check if this is definitely a leaf, but it should be in this case
   return $ val
-shrinkNode (Node16 pk po pl p) = do
+shrinkNode (Node16 n pk po pl p) = do
   let nPk = UMV.unsafeTake 4 pk
   let nP = MV.unsafeTake 4 po
-  return $ Node4 nPk nP pl p
-shrinkNode (Node48 pk po pl p) = do
+  return $ Node4 n nPk nP pl p
+shrinkNode (Node48 n pk po pl p) = do
   let nPk = UMV.unsafeTake 16 pk
   let nP = MV.unsafeTake 16 po
-  return $ Node16 nPk nP pl p
-shrinkNode (Node256 pk po pl p) = do
+  return $ Node16 n nPk nP pl p
+shrinkNode (Node256 n pk po pl p) = do
   let nPk = UMV.unsafeTake 48 pk
   let nP = MV.unsafeTake 48 po
-  return $ Node48 nPk nP pl p
+  return $ Node48 n nPk nP pl p
 -- Indicate if node would be full if we attempted to insert a thing
 -- Must be both full and not contain the key
 wouldBeFull :: Node a -> Word8 -> IO Bool

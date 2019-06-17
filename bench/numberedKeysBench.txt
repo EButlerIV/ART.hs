@@ -1,0 +1,188 @@
+Build profile: -w ghc-8.6.3 -O1
+In order, the following will be built (use -v for more details):
+ - ART-0.0.0.1 (bench:bench) --enable-profiling (first run)
+Preprocessing benchmark 'bench' for ART-0.0.0.1..
+Building benchmark 'bench' for ART-0.0.0.1..
+Running 1 benchmarks...
+Benchmark bench: RUNNING...
+benchmarking big stuff/insert/1 keys into ART
+time                 31.68 ns   (28.80 ns .. 35.24 ns)
+                     0.930 R²   (0.900 R² .. 0.969 R²)
+mean                 33.21 ns   (30.23 ns .. 39.90 ns)
+std dev              14.58 ns   (6.616 ns .. 29.37 ns)
+variance introduced by outliers: 100% (severely inflated)
+
+benchmarking big stuff/insert/1 keys into Trie
+time                 208.3 ns   (188.4 ns .. 230.7 ns)
+                     0.909 R²   (0.871 R² .. 0.946 R²)
+mean                 251.6 ns   (213.7 ns .. 376.9 ns)
+std dev              189.8 ns   (86.88 ns .. 366.1 ns)
+variance introduced by outliers: 100% (severely inflated)
+
+benchmarking big stuff/insert/1 keys into Map
+time                 64.78 ns   (58.83 ns .. 71.48 ns)
+                     0.944 R²   (0.922 R² .. 0.983 R²)
+mean                 68.81 ns   (62.61 ns .. 82.14 ns)
+std dev              31.23 ns   (18.01 ns .. 53.74 ns)
+variance introduced by outliers: 100% (severely inflated)
+
+benchmarking big stuff/insert/100 keys length 10 into ART
+time                 4.687 μs   (4.405 μs .. 5.114 μs)
+                     0.962 R²   (0.940 R² .. 0.990 R²)
+mean                 5.463 μs   (4.854 μs .. 6.931 μs)
+std dev              3.035 μs   (1.621 μs .. 5.248 μs)
+variance introduced by outliers: 99% (severely inflated)
+
+benchmarking big stuff/insert/100 keys length 10 into Trie
+time                 33.94 μs   (32.37 μs .. 36.00 μs)
+                     0.986 R²   (0.977 R² .. 0.993 R²)
+mean                 33.76 μs   (32.80 μs .. 34.67 μs)
+std dev              3.120 μs   (2.509 μs .. 4.055 μs)
+variance introduced by outliers: 82% (severely inflated)
+
+benchmarking big stuff/insert/100 keys length 10 into Map
+time                 28.39 μs   (25.73 μs .. 31.70 μs)
+                     0.924 R²   (0.885 R² .. 0.975 R²)
+mean                 27.46 μs   (25.85 μs .. 30.15 μs)
+std dev              6.898 μs   (4.012 μs .. 10.92 μs)
+variance introduced by outliers: 98% (severely inflated)
+
+benchmarking big stuff/search/1 keys from ART
+time                 2.457 μs   (2.311 μs .. 2.669 μs)
+                     0.956 R²   (0.930 R² .. 0.985 R²)
+mean                 2.636 μs   (2.447 μs .. 3.108 μs)
+std dev              946.7 ns   (444.9 ns .. 1.798 μs)
+variance introduced by outliers: 99% (severely inflated)
+
+benchmarking big stuff/search/1 keys from Trie
+time                 349.3 ns   (334.9 ns .. 373.7 ns)
+                     0.941 R²   (0.880 R² .. 0.992 R²)
+mean                 416.7 ns   (375.4 ns .. 508.8 ns)
+std dev              204.0 ns   (125.2 ns .. 349.9 ns)
+variance introduced by outliers: 100% (severely inflated)
+
+benchmarking big stuff/search/1 keys from Map
+time                 158.8 ns   (145.8 ns .. 175.6 ns)
+                     0.959 R²   (0.939 R² .. 0.997 R²)
+mean                 154.4 ns   (149.3 ns .. 163.0 ns)
+std dev              21.33 ns   (10.39 ns .. 34.12 ns)
+variance introduced by outliers: 95% (severely inflated)
+
+benchmarking big stuff/search/100 keys length 10 from ART
+time                 142.9 μs   (126.6 μs .. 158.4 μs)
+                     0.930 R²   (0.892 R² .. 0.977 R²)
+mean                 153.1 μs   (136.0 μs .. 181.9 μs)
+std dev              72.49 μs   (40.84 μs .. 110.3 μs)
+variance introduced by outliers: 99% (severely inflated)
+
+benchmarking big stuff/search/100 keys length 10 from Trie
+time                 31.07 μs   (28.56 μs .. 33.84 μs)
+                     0.938 R²   (0.898 R² .. 0.982 R²)
+mean                 29.10 μs   (27.69 μs .. 32.41 μs)
+std dev              6.983 μs   (4.381 μs .. 10.86 μs)
+variance introduced by outliers: 97% (severely inflated)
+
+benchmarking big stuff/search/100 keys length 10 from Map
+time                 16.44 μs   (15.52 μs .. 18.01 μs)
+                     0.958 R²   (0.929 R² .. 0.990 R²)
+mean                 18.93 μs   (17.55 μs .. 23.35 μs)
+std dev              7.776 μs   (3.585 μs .. 14.77 μs)
+variance introduced by outliers: 99% (severely inflated)
+
+benchmarking big stuff/remove/1 keys from ART
+time                 2.974 μs   (2.751 μs .. 3.323 μs)
+                     0.945 R²   (0.915 R² .. 0.988 R²)
+mean                 3.225 μs   (2.971 μs .. 3.943 μs)
+std dev              1.287 μs   (629.1 ns .. 2.551 μs)
+variance introduced by outliers: 99% (severely inflated)
+
+benchmarking big stuff/remove/1 keys from Trie
+time                 545.2 ns   (488.3 ns .. 606.8 ns)
+                     0.948 R²   (0.930 R² .. 0.984 R²)
+mean                 644.9 ns   (509.5 ns .. 1.148 μs)
+std dev              816.6 ns   (75.32 ns .. 1.733 μs)
+variance introduced by outliers: 100% (severely inflated)
+
+benchmarking big stuff/remove/1 keys from Map
+time                 1.665 μs   (1.594 μs .. 1.770 μs)
+                     0.969 R²   (0.949 R² .. 0.989 R²)
+mean                 1.933 μs   (1.738 μs .. 2.628 μs)
+std dev              1.157 μs   (322.8 ns .. 2.374 μs)
+variance introduced by outliers: 99% (severely inflated)
+
+benchmarking big stuff/remove/100 keys length 10 from ART
+time                 426.4 μs   (399.8 μs .. 462.1 μs)
+                     0.926 R²   (0.877 R² .. 0.974 R²)
+mean                 480.7 μs   (444.1 μs .. 538.4 μs)
+std dev              155.9 μs   (98.33 μs .. 298.9 μs)
+variance introduced by outliers: 98% (severely inflated)
+
+benchmarking big stuff/remove/100 keys length 10 from Trie
+time                 46.01 μs   (43.08 μs .. 50.63 μs)
+                     0.947 R²   (0.915 R² .. 0.989 R²)
+mean                 49.93 μs   (45.77 μs .. 60.58 μs)
+std dev              19.53 μs   (10.64 μs .. 35.98 μs)
+variance introduced by outliers: 99% (severely inflated)
+
+benchmarking big stuff/remove/100 keys length 10 from Map
+time                 196.3 μs   (173.3 μs .. 222.4 μs)
+                     0.916 R²   (0.865 R² .. 0.990 R²)
+mean                 185.9 μs   (177.0 μs .. 202.9 μs)
+std dev              38.62 μs   (18.82 μs .. 66.41 μs)
+variance introduced by outliers: 95% (severely inflated)
+
+benchmarking small stuff/setChild/4 keys into Node4
+time                 7.035 μs   (6.330 μs .. 7.864 μs)
+                     0.949 R²   (0.932 R² .. 0.994 R²)
+mean                 6.814 μs   (6.357 μs .. 7.732 μs)
+std dev              1.233 μs   (249.7 ns .. 1.734 μs)
+variance introduced by outliers: 95% (severely inflated)
+
+benchmarking small stuff/setChild/16 keys into Node16
+time                 24.45 μs   (23.00 μs .. 26.44 μs)
+                     0.951 R²   (0.905 R² .. 0.991 R²)
+mean                 25.08 μs   (23.46 μs .. 29.16 μs)
+std dev              6.540 μs   (3.346 μs .. 11.64 μs)
+variance introduced by outliers: 98% (severely inflated)
+
+benchmarking small stuff/setChild/48 keys into Node48
+time                 82.23 μs   (75.11 μs .. 91.22 μs)
+                     0.949 R²   (0.916 R² .. 0.998 R²)
+mean                 79.05 μs   (76.23 μs .. 85.78 μs)
+std dev              12.13 μs   (3.184 μs .. 21.97 μs)
+variance introduced by outliers: 92% (severely inflated)
+
+benchmarking small stuff/setChild/256 keys into Node256
+time                 383.1 μs   (350.9 μs .. 426.1 μs)
+                     0.918 R²   (0.874 R² .. 0.973 R²)
+mean                 378.5 μs   (351.2 μs .. 418.1 μs)
+std dev              100.9 μs   (67.69 μs .. 133.3 μs)
+variance introduced by outliers: 96% (severely inflated)
+
+benchmarking small stuff/unsetChild/4 keys from Node4
+time                 7.834 μs   (7.650 μs .. 8.051 μs)
+                     0.995 R²   (0.993 R² .. 0.997 R²)
+mean                 7.912 μs   (7.721 μs .. 8.083 μs)
+std dev              402.3 ns   (321.8 ns .. 511.8 ns)
+variance introduced by outliers: 58% (severely inflated)
+
+benchmarking small stuff/unsetChild/4 keys from Node4 no copy
+time                 12.38 μs   (12.12 μs .. 12.64 μs)
+                     0.995 R²   (0.992 R² .. 0.997 R²)
+mean                 12.42 μs   (12.07 μs .. 12.73 μs)
+std dev              743.9 ns   (581.2 ns .. 1.008 μs)
+variance introduced by outliers: 64% (severely inflated)
+
+benchmarking small stuff/keyIndex/use keyIndex to test node4 for key membership
+time                 5.692 μs   (5.521 μs .. 5.929 μs)
+                     0.988 R²   (0.983 R² .. 0.993 R²)
+mean                 5.838 μs   (5.603 μs .. 6.146 μs)
+std dev              604.0 ns   (426.8 ns .. 804.6 ns)
+variance introduced by outliers: 86% (severely inflated)
+
+benchmarking small stuff/keyIndex/use getIx to test node4 for key membership
+time                 6.823 μs   (6.108 μs .. 7.429 μs)
+                     0.958 R²   (0.940 R² .. 0.981 R²)
+mean                 6.897 μs   (6.326 μs .. 7.743 μs)
+std dev              1.199 μs   (857.4 ns .. 1.722 μs)
+variance introduced by outliers: 95% (severely inflated)
