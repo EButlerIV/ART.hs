@@ -192,7 +192,8 @@ unsetChildNoCopy :: Node a -> Word8 -> IO ()
 unsetChildNoCopy Empty _ = return ()
 unsetChildNoCopy (Leaf _ _) _ = return ()
 unsetChildNoCopy node key = do
-  maybeIndex <- getIx (partialKeys node) key
+  nK <- readIORef $ numKeys node
+  maybeIndex <- getIx (UMV.take (fromIntegral nK) $ partialKeys node) key
   case maybeIndex of
     Nothing -> return ()
     Just index -> if index > 0 && key == (0 :: Word8) then return () else do
