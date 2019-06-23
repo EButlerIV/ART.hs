@@ -50,6 +50,14 @@ setupFullNode = do
     mapM (\k -> setChild node4 k (Leaf (BS0.pack [k]) k)) randomKeys
     return (node4, randomKeys)
 
+setupFullNode16 :: IO (Node Word8, [Word8])
+setupFullNode16 = do
+    randomKey <- random 16
+    let randomKeys = (BS0.unpack randomKey)
+    node16 <- newNode16
+    mapM (\k -> setChild node16 k (Leaf (BS0.pack [k]) k)) randomKeys
+    return (node16, randomKeys)
+
 main :: IO ()
 main = defaultMain [
     env setupEnv $ \ ~(keys, fullTrie, fullMap, fullART) -> bgroup "big stuff" [
@@ -91,7 +99,9 @@ main = defaultMain [
         ],
         bgroup "keyIndex" [
             bench "use keyIndex to test node4 for key membership" $ perRunEnv setupFullNode $ \(n, keys) -> mapM (\k -> keyIndex n k) keys,
-            bench "use getIx to test node4 for key membership" $ perRunEnv setupFullNode $ \(n, keys) -> mapM (\k -> getIx (partialKeys n) k) keys
+            bench "use getIx to test node4 for key membership" $ perRunEnv setupFullNode $ \(n, keys) -> mapM (\k -> getIx (partialKeys n) k) keys,
+            bench "use keyIndex to test node16 for key membership" $ perRunEnv setupFullNode16 $ \(n, keys) -> mapM (\k -> keyIndex n k) keys,
+            bench "use getIx to test node16 for key membership" $ perRunEnv setupFullNode16 $ \(n, keys) -> mapM (\k -> getIx (partialKeys n) k) keys
         ]
     ]
     ]

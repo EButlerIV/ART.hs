@@ -5,6 +5,7 @@ import Data.ART.Node
 
 import Data.Word
 import Control.Monad
+import Data.IORef
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as MV
@@ -16,11 +17,11 @@ isEmpty Empty = True
 isEmpty _ = False
 
 isNode16 :: Node a -> Bool
-isNode16 (Node16 _ _ _ _) = True
+isNode16 (Node16 _ _ _ _ _) = True
 isNode16 _ = False
 
 isNode48 :: Node a -> Bool
-isNode48 (Node48 _ _ _ _) = True
+isNode48 (Node48 _ _ _ _ _) = True
 isNode48 _ = False
 
 isNode256 :: Node a -> Bool
@@ -113,7 +114,9 @@ main = hspec $ do
             let prefix = "dsklfajldsafkjldfsakjflskjdsalkfjdsfakjl"
             let kv = map (\i -> (BS.pack $ prefix ++ (show i), i)) [1, 2]
             node <- foldM (\n (k, v) -> insert n k v 0) Empty kv
+            keys <- UV.freeze $ partialKeys node
             result <- remove node (BS.pack $ prefix ++ "1") 0
+            nk <- readIORef $ numKeys node
             (show result) `shouldBe` "ResizedChild {newChild = Leaf}"
             result <- search node (BS.pack $ prefix ++ "1") 0
             (isEmpty result) `shouldBe` True
@@ -126,4 +129,5 @@ main = hspec $ do
             result <- search node (BS.pack $ "1" ++ prefix ++ "1") 0
             (isEmpty result) `shouldBe` True
 
-
+    -- describe "Internals" $ do
+    --     describe "shouldGrow"

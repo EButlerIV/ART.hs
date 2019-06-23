@@ -81,8 +81,7 @@ insert node key val depth = do
       ix <- keyIndex node keyByte
       case (ix) of
         Just i -> do
-          childKey <- UMV.read (partialKeys node) i
-          -- print $ "attempting to get child at index, key: " ++ (show i) ++ " " ++ (show childKey)
+          childKey <- getKey node i
           child <- fmap fromJust (maybeGetChild node childKey)
           case child of
             Empty -> do -- If child is empty, replace with Leaf
@@ -96,25 +95,8 @@ insert node key val depth = do
                 newestChild <- insert child key val (depth + 1)
                 MV.write (pointers node) i newestChild
                 return node
-            --   full <- wouldBeFull child keyByte
-            --   case full of
-            --     True -> do
-            --       newChild <- growNode child
-            --       newChild <- insert newChild key val (depth + 1)
-            --       MV.write (pointers node) i newChild
-            --       return node
-            --     False -> do
-            --       insert child key val (depth + 1)
-            --       return node
         Nothing -> do -- New thing!
-          -- print $ "adding new thing at depth: " ++ (show newDepth)
-          -- print $ "key: " ++ (show $ BS.index key newDepth)
-          -- print $"new thing! " ++ (show key) ++ " " ++ (show val) 
           superAddChild node (BS.index key newDepth) (Leaf key val)
-        --   full <- isFull node
-        --   newNode <- if full then growNode node else return node
-        --   addChild newNode (BS.index key newDepth) (Leaf key val)
-        --   return newNode
 
 -- SEARCH
 search :: Node a -> BS.ByteString -> Int -> IO (Node a)
@@ -148,10 +130,7 @@ remove node key depth = do
     True -> do
       let newDepth = depth + (fromIntegral $ prefixLen node)
       let thisKey = (BS.index key newDepth)
-      -- print $ "deleting key " ++ (show thisKey) ++ " the depth " ++ (show newDepth)
-      -- print $ "node: " ++ (show node)
       next <- maybeGetChild node thisKey
-      -- print $ "next? " ++ (show next)
       ix <- keyIndex node thisKey
       case next of
         Nothing -> return NotFound
@@ -163,21 +142,6 @@ remove node key depth = do
             DeletedChild -> return Complete
             DeletedLeaf -> do
               unsetChild node thisKey
-              -- let keysLength = UMV.length $ partialKeys node
-              -- -- Remove and shift keys
-              -- mapM_ (\i -> if i < keyIndex
-              --              then return ()
-              --              else if i == keysLength - 1
-              --                   then UMV.write (partialKeys node) i 0
-              --                   else (UMV.read (partialKeys node) (i + 1)) >>= (\k -> UMV.write (partialKeys node) i k)
-              --       ) [0..(keysLength - 1)]
-              -- -- Remove and shift pointers
-              -- mapM_ (\i -> if i < keyIndex
-              --              then return ()
-              --              else if i == keysLength - 1
-              --                   then MV.write (pointers node) i Empty
-              --                   else (MV.read (pointers node) (i + 1)) >>= (\k -> MV.write (pointers node) i k)
-              --       ) [0..(keysLength - 1)]
               s <- shouldShrink node
               case s of
                 False -> return $ DeletedChild
