@@ -65,11 +65,13 @@ insert node key val depth = do
   case pLen == prefixLength of
     False -> do -- Prefix length mismatch! Split the prefix and add a new node
       _newNode <- newNode4
-      let sharedPrefixVector = UMV.take pLen (prefix node)
+      let _sharedPrefixVector = UMV.take pLen (prefix node)
+      sharedPrefixVector <- UMV.grow _sharedPrefixVector (maxPrefixSize - (UMV.length _sharedPrefixVector))
       let __newNode = _newNode{prefix = sharedPrefixVector, prefixLen = (fromIntegral pLen)}
       -- addChild newNode (BS.index key (depth + pLen)) (Leaf key val)
       newNode <- superAddChild __newNode (BS.index key (depth + pLen)) (Leaf key val)
-      let sharedPrefixVector = UMV.drop pLen (prefix node)
+      let _sharedPrefixVector = UMV.drop pLen (prefix node)
+      sharedPrefixVector <- UMV.grow _sharedPrefixVector (maxPrefixSize - (UMV.length _sharedPrefixVector))
       let newChild = node{ prefixLen = fromIntegral $ (prefixLen node) - (fromIntegral $ pLen + 1), prefix = sharedPrefixVector}
       newKey <- UMV.read (prefix newChild) 0
       -- addChild newNode newKey newChild
