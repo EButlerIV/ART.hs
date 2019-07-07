@@ -77,6 +77,7 @@ hasNumKeys n k = do
   nK <- readIORef $ numKeys n
   return $ (fromIntegral nK) == k
 
+-- TODO: Make sure this actually works as expected
 shouldShrink :: Node a -> IO Bool
 shouldShrink Empty = return False
 shouldShrink (Leaf _ _) = return False
