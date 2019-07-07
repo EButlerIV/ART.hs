@@ -78,13 +78,10 @@ remove node key depth = do
         True -> do
             let newDepth = depth + (fromIntegral $ prefixLen node)
             let thisKey = (BS.index key newDepth)
-            let next = maybeGetChild node thisKey
-            let ix = keyIndex node thisKey
-            case next of
+            case maybeGetChild node thisKey of
                 Nothing -> (node, NotFound)
                 Just child -> do
                     let (newChild, removeStatus) = remove child key (newDepth + 1)
-                    let keyIndex = fromJust ix
                     case removeStatus of
                         NotFound -> (node, NotFound)
                         DeletedChild -> do

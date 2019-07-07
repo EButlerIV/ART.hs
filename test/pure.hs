@@ -129,22 +129,22 @@ main = hspec $ do
             let (newNode, result) = remove node (BS8.pack $ "1") 0
             result `shouldBe` NotFound
 
-        -- it "should return DeletedChild if thing deleted with no resize necessary" $ do
-        --     let prefix = "dsklfajldsafkjldfsakjflskjdsalkfjdsfakjl"
-        --     let kv = map (\i -> (BS8.pack $ prefix ++ (show i), i)) [1, 2, 3]
-        --     let node = foldl (\n (k, v) -> insert n k v 0) Empty kv
-        --     let (node, result) = remove node (BS8.pack $ prefix ++ "1") 0
-        --     result `shouldBe` DeletedChild
-        --     let result = search node (BS8.pack $ prefix ++ "1") 0
-        --     (isEmpty result) `shouldBe` True
-        --     (partialKeys node) `shouldBe` BSS.pack ([50, 51, 0, 0] :: [Word8])
+        it "should return DeletedChild if thing deleted with no resize necessary" $ do
+            let prefix = "dsklfajldsafkjldfsakjflskjdsalkfjdsfakjl"
+            let kv = map (\i -> (BS8.pack $ prefix ++ (show i), i)) [1, 2, 3]
+            let node = foldl (\n (k, v) -> insert n k v 0) Empty kv
+            (node, result) <- pure $ remove node (BS8.pack $ prefix ++ "1") 0
+            result `shouldBe` DeletedChild
+            let result = search node (BS8.pack $ prefix ++ "1") 0
+            (isEmpty result) `shouldBe` True
+            (partialKeys node) `shouldBe` BSS.pack ([50, 51, 0, 0] :: [Word8])
 
         it "should return ResizedChild if thing deleted with resize necessary" $ do
             let prefix = "dsklfajldsafkjldfsakjflskjdsalkfjdsfakjl"
             let kv = map (\i -> (BS8.pack $ prefix ++ (show i), i)) [1, 2]
             let node = foldl (\n (k, v) -> insert n k v 0) Empty kv
             let keys = partialKeys node
-            let (node, result) = remove node (BS8.pack $ prefix ++ "1") 0
+            (node, result) <- pure $ remove node (BS8.pack $ prefix ++ "1") 0
             result `shouldBe` ResizedChild
 
             let result = search node (BS8.pack $ prefix ++ "1") 0
@@ -153,8 +153,8 @@ main = hspec $ do
         it "should return Complete if thing deleted from child" $ do
             let prefix = "dsklfajldsafkjldfsakjflskjdsalkfjdsfakjl"
             let kv = map (\i -> (BS8.pack $ (show i) ++ prefix ++ (show i), i)) [1, 2, 3]
-            let _node = foldl (\n (k, v) -> insert n k v 0) Empty (kv ++ [(BS8.pack $ "1" ++ prefix ++ "q", 0)])
-            let (node, result) = remove _node (BS8.pack $ "1" ++ prefix ++ "1") 0
+            let node = foldl (\n (k, v) -> insert n k v 0) Empty (kv ++ [(BS8.pack $ "1" ++ prefix ++ "q", 0)])
+            (node, result) <- pure $ remove node (BS8.pack $ "1" ++ prefix ++ "1") 0
             result `shouldBe` Complete
             let result = search node (BS8.pack $ "1" ++ prefix ++ "1") 0
             (isEmpty result) `shouldBe` True
