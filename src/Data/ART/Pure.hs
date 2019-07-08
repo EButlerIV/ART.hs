@@ -20,7 +20,7 @@ insert :: Node a -> BS.ByteString -> a -> Int -> Node a
 insert Empty bs val _ = Leaf bs val
 insert leaf@(Leaf k l) key val depth = newParent
     where pLen = checkPrefix leaf key depth
-          sharedPrefix = BSS.toShort $ BS.take pLen $ BS.drop depth key
+          sharedPrefix = resizePrefix (BSS.toShort $ BS.take pLen $ BS.drop depth key) maxPrefixSize
           __newParent = newNode4{prefix = sharedPrefix, prefixLen = (fromIntegral pLen)}
           _newParent = addChild __newParent (BS.index k (depth + pLen)) leaf
           newParent = addChild _newParent (BS.index key (depth + pLen)) (Leaf key val)

@@ -11,17 +11,6 @@ import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Short as BSS
 import qualified Data.ByteString.Char8 as BS8
 
-prop_revapp :: [Int] -> [Int] -> Bool
-prop_revapp xs ys = reverse (xs++ys) == reverse xs ++ reverse ys
-
-alwaysSorted :: [Word8] -> Bool
-alwaysSorted keys = if length keys < 4 then True else (filledLength == 16) && (fst sorted)
-    where blank = BSS.toShort $ BS.replicate 16 0
-          filled = foldl (\ks (k, i) -> fst $ insertKey ks k (if i < 5 then i else 4)) blank (zip keys [0..])
-          filledLength = length (BSS.unpack filled)
-          sorted = foldl (\(t, a) b -> if t then (a <= b, b) else (False, b)) (True, 0) (BSS.unpack filled)
-
-
 main :: IO ()
 main = hspec $ do
     describe "insertKey" $ do
@@ -43,6 +32,34 @@ main = hspec $ do
             let (newKeys, newIx) = insertKey keys (1 :: Word8) 2
             newKeys `shouldBe` keys
             newIx `shouldBe` 1
+        it "should insert four keys in sequence" $ do
+            let keys = BSS.pack [0, 0, 0, 0]
+            (newKeys, newIx) <- pure $ insertKey keys 0 0
+            newIx `shouldBe` 0
+            newKeys `shouldBe` BSS.pack [0,0,0,0]
+            (newKeys, newIx) <- pure $ insertKey newKeys 1 1
+            newIx `shouldBe` 1
+            newKeys `shouldBe` BSS.pack [0,1,0,0]
+            (newKeys, newIx) <- pure $ insertKey newKeys 2 2
+            newIx `shouldBe` 2
+            newKeys `shouldBe` BSS.pack [0,1,2,0]
+            (newKeys, newIx) <- pure $ insertKey newKeys 3 3
+            newIx `shouldBe` 3
+            newKeys `shouldBe` BSS.pack [0,1,2,3]
+        it "should insert four more keys" $ do
+            let keys = BSS.pack [0, 1, 2, 3]
+            (newKeys, newIx) <- pure $ insertKey keys 0 4
+            newIx `shouldBe` 0
+            newKeys `shouldBe` BSS.pack [0, 1, 2, 3]
+            (newKeys, newIx) <- pure $ insertKey newKeys 1 4
+            newIx `shouldBe` 1
+            newKeys `shouldBe` BSS.pack [0, 1, 2, 3]
+            (newKeys, newIx) <- pure $ insertKey newKeys 2 4
+            newIx `shouldBe` 2
+            newKeys `shouldBe` BSS.pack [0, 1, 2, 3]
+            (newKeys, newIx) <- pure $ insertKey newKeys 3 4
+            newIx `shouldBe` 3
+            newKeys `shouldBe` BSS.pack [0, 1, 2, 3]
 
     describe "insertChildAt" $ do
         it "should insert a new child at index" $ do

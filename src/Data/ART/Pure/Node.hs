@@ -83,7 +83,7 @@ isFull (Leaf _ _) = True
 isFull (Node4 c _ _ _ _) = c == 4
 isFull (Node16 c _ _ _ _) = c == 16
 isFull (Node48 c _ _ _ _) = c == 48
-isFull (Node256 c _ _ _) = c == 0 -- Word8!
+isFull (Node256 c _ _ _) = False
 
 wouldBeFull :: Node a -> Word8 -> Bool
 wouldBeFull node key = isFull node && (keyIndex node key) == Nothing
@@ -163,7 +163,7 @@ insertChild ptrs ix child = runST $ do
     let s = sizeofSmallArray ptrs
     mp <- thawSmallArray ptrs 0 s
     writeSmallArray mp (fromIntegral ix) child
-    unsafeFreezeSmallArray mp
+    freezeSmallArray mp 0 s
 
 insertChildAt :: SmallArray (Node a) -> Int -> Node a -> SmallArray (Node a)
 insertChildAt ptrs ix child = runST $ do
@@ -175,7 +175,7 @@ insertChildAt ptrs ix child = runST $ do
     else do
         copySmallArray new 0 ptrs 0 (ix)
         copySmallArray new (min (ix + 1) s) ptrs (ix + 1) (max (s - ix) 0)
-    unsafeFreezeSmallArray new
+    freezeSmallArray new 0 s
 
 removeChild ptrs ix = insertChild ptrs ix Empty
 
@@ -184,7 +184,7 @@ removeChildAt ptrs ix = runST $ do
     mp <- thawSmallArray ptrs 0 s
     copySmallArray mp ix ptrs (ix + 1) (s - ix)
     writeSmallArray mp (s - 1) Empty
-    unsafeFreezeSmallArray mp
+    freezeSmallArray mp 0 s
 
 -- Assumes not full
 setChild :: Node a -> Word8 -> Node a -> Node a
