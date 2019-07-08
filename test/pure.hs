@@ -7,6 +7,7 @@ import Data.Word
 import Control.Monad
 import Control.Monad.ST
 import Data.Primitive.SmallArray
+import Data.ByteString.Random
 import qualified Data.ByteString       as BS
 import qualified Data.ByteString.Short as BSS
 import qualified Data.ByteString.Char8 as BS8
@@ -109,7 +110,7 @@ main = hspec $ do
             let node = Empty
             let _node = insert node (BS8.pack "abcde1") 0 0
             let __node = insert _node (BS8.pack "abcde2") 1 0
-            (prefix __node) `shouldBe` (BSS.pack ([97,98,99,100,101] :: [Word8]))
+            (take 5 $ BSS.unpack $ prefix __node) `shouldBe` ([97,98,99,100,101] :: [Word8])
     
     describe "Search" $ do
         it "should return empty when searching empty node" $ do
@@ -175,3 +176,9 @@ main = hspec $ do
             result `shouldBe` Complete
             let result = search node (BS8.pack $ "1" ++ prefix ++ "1") 0
             (isEmpty result) `shouldBe` True
+
+    describe "In practice" $ do
+        it "should store and retrieve 1k of random keys" $ do
+            randomKeys <- mapM random (take 1000 $ repeat 10)
+            node <- pure $ foldl (\n k -> insert n k k 0) Empty randomKeys
+            isEmpty node `shouldBe` False

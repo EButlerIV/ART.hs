@@ -93,7 +93,7 @@ resizePointers :: SmallArray (Node a) -> Int -> SmallArray (Node a)
 resizePointers ptrs len = runST $ do
     let s = sizeofSmallArray ptrs
     mp <- newSmallArray len Empty
-    copySmallArray mp s ptrs 0 (max (len - s) 0)
+    copySmallArray mp 0 ptrs 0 s
     freezeSmallArray mp 0 len
 
 resizePrefix :: BSS.ShortByteString -> Int -> BSS.ShortByteString
@@ -107,8 +107,8 @@ growNode n@(Node256 _ _ _ _) = undefined
 growNode n@(Node4 c k pt pl p) = newNode16{ numKeys = c, partialKeys = newKeys, pointers = newPointers, prefixLen = pl, prefix = p }
     where newKeys = BSS.toShort $ BS.append (BSS.fromShort k) (BS.replicate 12 0)
           newPointers = resizePointers pt 16
--- growNode n@(Node4 c k pt pl p) = newNode{ numKeys = c, prefixLen = pl, prefix = p }
---     where newNode = foldl (\n (k, i) -> setChild n k (indexSmallArray pt i)) newNode16 (zip (BSS.unpack k) [0..])
+-- growNode n@(Node4 c keys pt pl p) = newNode{ numKeys = c, prefixLen = pl, prefix = p }
+--     where newNode = foldl (\n (k, i) -> setChild n k (indexSmallArray pt i)) newNode16 (zip (BSS.unpack keys) [0..3])
 growNode n@(Node16 c k pt pl p) = newNode
     where _newNode = newNode48{ numKeys = c, prefixLen = pl, prefix = p }
           newNode = foldl (\n (k, i) -> setChild n k (indexSmallArray pt i)) _newNode (zip (BSS.unpack k) [0..])
@@ -159,6 +159,7 @@ removeKey keys key lim = if BS.length pref == BSS.length keys then (keys, Nothin
     where   (bs, rem) = BS.splitAt (fromIntegral lim) $ BSS.fromShort keys
             (pref, suff) = BS.span (\x -> x /= key) bs
 
+insertChild :: SmallArray (Node a) -> Word8 -> Node a -> SmallArray (Node a)
 insertChild ptrs ix child = runST $ do
     let s = sizeofSmallArray ptrs
     mp <- thawSmallArray ptrs 0 s
@@ -173,16 +174,25 @@ insertChildAt ptrs ix child = runST $ do
     if ix == 0 then do
         copySmallArray new 1 ptrs 0 (s - 1)
     else do
-        copySmallArray new 0 ptrs 0 (ix)
-        copySmallArray new (min (ix + 1) s) ptrs (ix + 1) (max (s - ix) 0)
+        let len = min ix s
+        copySmallArray new 0 ptrs 0 len
+        let destinationOffset = min (ix + 1) s
+        let sourceOffset = min ix s
+        let length = max (s - ix - 1) 0
+        copySmallArray new destinationOffset ptrs sourceOffset length
     freezeSmallArray new 0 s
 
+removeChild :: SmallArray (Node a) -> Word8 -> SmallArray (Node a)
 removeChild ptrs ix = insertChild ptrs ix Empty
 
+removeChildAt :: SmallArray (Node a) -> Int -> SmallArray (Node a)
 removeChildAt ptrs ix = runST $ do
     let s = sizeofSmallArray ptrs
     mp <- thawSmallArray ptrs 0 s
-    copySmallArray mp ix ptrs (ix + 1) (s - ix)
+    let destinationOffset = min ix s
+    let sourceOffset = min (ix + 1) s
+    let len = max (s - sourceOffset) 0
+    copySmallArray mp destinationOffset ptrs sourceOffset len
     writeSmallArray mp (s - 1) Empty
     freezeSmallArray mp 0 s
 
@@ -200,7 +210,7 @@ setChild n@(Node48 c k p _ _) key child = n{ numKeys = newNumKeys, partialKeys =
 setChild node key child = node{ numKeys = newNumKeys, partialKeys = newKeys, pointers = newPointers }
     where (newKeys, ix) = insertKey (partialKeys node) key (numKeys node)
           newPointers = insertChildAt (pointers node) (fromIntegral ix) child 
-          newNumKeys = if isEmpty $ indexSmallArray newPointers ((fromIntegral $ numKeys node)) then (numKeys node) else (numKeys node) + 1 
+          newNumKeys = if isEmpty $ indexSmallArray newPointers (min (fromIntegral $ numKeys node) ((sizeofSmallArray newPointers) - 1)) then (numKeys node) else (fromIntegral  (numKeys node) + 1)
           
 unsetChild :: Node a -> Word8 -> Node a
 unsetChild Empty _ = undefined
