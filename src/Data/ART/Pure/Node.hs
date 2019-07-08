@@ -149,9 +149,15 @@ maybeGetChild node key = do
 
 insertKey :: BSS.ShortByteString -> Word8 -> Word8 -> (BSS.ShortByteString, Word8)
 insertKey keys key 0 = (BSS.toShort $ BS.init $ BS.cons key $ BSS.fromShort keys, 0)
-insertKey keys key lim = if (BS.length suff > 0 && BS.head suff == key) then (keys, fromIntegral $ BS.length pref) else (BSS.toShort $ BS.append (BS.snoc pref key) (BS.append suff (BS.init s)), fromIntegral $ BS.length pref)
-    where   (l, s) = BS.splitAt (fromIntegral lim) $ BSS.fromShort keys
-            (pref, suff) = BS.span (\x -> if key == 0 then False else x < key) l
+insertKey keys key lim = do
+    let (relevant, remainder) = BS.splitAt (fromIntegral lim) $ BSS.fromShort keys
+    let (prefix, suffix) = BS.span (\x -> x < key) relevant
+    if (BS.length suffix > 0 && BS.head suffix == key) then
+        (keys, fromIntegral $ BS.length prefix)
+    else do
+        let insertedIx = fromIntegral $ BS.length prefix
+        let suff = if BS.length remainder > 0 then BS.append suffix (BS.init remainder) else suffix
+        (BSS.toShort $ BS.append (BS.snoc prefix key) suff, insertedIx)
 
 removeKey :: BSS.ShortByteString -> Word8 -> Word8 -> (BSS.ShortByteString, Maybe Word8)
 removeKeys keys _ 0 = (keys, Nothing)

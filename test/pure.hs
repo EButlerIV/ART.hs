@@ -182,3 +182,7 @@ main = hspec $ do
             randomKeys <- mapM random (take 1000 $ repeat 10)
             node <- pure $ foldl (\n k -> insert n k k 0) Empty randomKeys
             isEmpty node `shouldBe` False
+            mapM_ (\k -> do
+                let n = search node k 0
+                return $ isEmpty n `shouldBe` False
+                ) randomKeys
