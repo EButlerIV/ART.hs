@@ -12,9 +12,9 @@ import qualified Data.ByteString.Short as BSS
 maxPrefixSize :: Int
 maxPrefixSize = 8
 
-data Node a = Node4 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: (SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
-              Node16 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: (SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
-              Node48 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: (SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
+data Node a = Node4 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
+              Node16 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
+              Node48 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
               Node256 { numKeys :: Word8, pointers :: (SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
               Leaf BS.ByteString a |
               Empty deriving (Eq, Show)
