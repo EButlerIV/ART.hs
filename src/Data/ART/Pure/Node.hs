@@ -17,15 +17,15 @@ data Node a = Node4 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, poi
               Node48 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: (SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
               Node256 { numKeys :: Word8, pointers :: (SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
               Leaf BS.ByteString a |
-              Empty deriving (Eq)
+              Empty deriving (Eq, Show)
 
-instance Show (Node a) where
-    show Empty = "Empty"
-    show (Leaf k v ) = "Leaf " ++ (show k)
-    show (Node4 c k pt pl p ) = "Node4 " ++ (show c) ++ " " ++ (show k) ++ " " ++ (show pt) ++ " " ++ (show pl) ++ " " ++ (show p)
-    show (Node16 c k pt pl p ) = "Node16 " ++ (show c) ++ " " ++ (show k) ++ " " ++ (show pt) ++ " " ++ (show pl) ++ " " ++ (show p)
-    show (Node48 _ _ _ _ _ ) = "Node48"
-    show (Node256 _ _ _ _ ) = "Node256"
+-- instance Show (Node a) where
+--     show Empty = "Empty"
+--     show (Leaf k v ) = "Leaf " ++ (show k)
+--     show (Node4 c k pt pl p ) = "Node4 " ++ (show c) ++ " " ++ (show k) ++ " " ++ (show pt) ++ " " ++ (show pl) ++ " " ++ (show p)
+--     show (Node16 c k pt pl p ) = "Node16 " ++ (show c) ++ " " ++ (show k) ++ " " ++ (show pt) ++ " " ++ (show pl) ++ " " ++ (show p)
+--     show (Node48 _ _ _ _ _ ) = "Node48"
+--     show (Node256 _ _ _ _ ) = "Node256"
 
 isEmpty :: Node a -> Bool
 isEmpty Empty = True
@@ -107,10 +107,10 @@ growNode n@(Node256 _ _ _ _) = undefined
 growNode n@(Node4 c k pt pl p) = newNode16{ numKeys = c, partialKeys = newKeys, pointers = newPointers, prefixLen = pl, prefix = p }
     where newKeys = BSS.toShort $ BS.append (BSS.fromShort k) (BS.replicate 12 0)
           newPointers = resizePointers pt 16
--- growNode n@(Node4 c keys pt pl p) = newNode{ numKeys = c, prefixLen = pl, prefix = p }
+-- growNode n@(Node4 c keys pt pl p) = newNode{ prefixLen = pl, prefix = p }
 --     where newNode = foldl (\n (k, i) -> setChild n k (indexSmallArray pt i)) newNode16 (zip (BSS.unpack keys) [0..3])
 growNode n@(Node16 c k pt pl p) = newNode
-    where _newNode = newNode48{ numKeys = c, prefixLen = pl, prefix = p }
+    where _newNode = newNode48{ prefixLen = pl, prefix = p }
           newNode = foldl (\n (k, i) -> setChild n k (indexSmallArray pt i)) _newNode (zip (BSS.unpack k) [0..])
 growNode (Node48 c k pt pl p) = Node256 c pt pl p
 
@@ -130,9 +130,11 @@ shrinkNode (Node16 c k pt pl p) = Node4 c newKeys newPointers pl p
 shrinkNode (Node4 _ _ pt _ _) = indexSmallArray pt 0
 
 keyIndex :: Node a -> Word8 -> Maybe Int
-keyIndex Empty _ = undefined
-keyIndex (Leaf _ _) _ = undefined
-keyIndex (Node256 _ _ _ _) k = undefined
+keyIndex Empty _ = Nothing
+keyIndex (Leaf _ _) _ = Nothing
+keyIndex (Node256 _ pt _ _) k = case indexSmallArray pt (fromIntegral k) of
+    Empty -> Nothing
+    _ -> return $ fromIntegral k
 keyIndex node key = BS.elemIndex key keys
     where keys = BS.take (fromIntegral $ numKeys node) $ BSS.fromShort $ partialKeys node
     
@@ -142,22 +144,28 @@ maybeGetChild :: Node a -> Word8 -> Maybe (Node a)
 maybeGetChild Empty _ = Nothing
 maybeGetChild (Leaf _ _) _ = Nothing
 maybeGetChild (Node256 _ pt _ _) k = Just $ indexSmallArray pt (fromIntegral k)
+maybeGetChild node@(Node48 c k pt pl p) key = case keyIndex node key of
+    Nothing -> Nothing
+    Just i -> return $ indexSmallArray pt (fromIntegral key)
 maybeGetChild node key = do
     ix <- keyIndex node key
     return $ indexSmallArray (pointers node) ix
 
 
-insertKey :: BSS.ShortByteString -> Word8 -> Word8 -> (BSS.ShortByteString, Word8)
-insertKey keys key 0 = (BSS.toShort $ BS.init $ BS.cons key $ BSS.fromShort keys, 0)
+insertKey :: BSS.ShortByteString -> Word8 -> Word8 -> (BSS.ShortByteString, Word8, Bool)
+insertKey keys key 0 = do
+    let k = BS.init $ BSS.fromShort keys
+    let newKeys = BSS.toShort $ BS.cons key k
+    (BSS.toShort $ BS.init $ BS.cons key $ BSS.fromShort keys, 0, True)
 insertKey keys key lim = do
     let (relevant, remainder) = BS.splitAt (fromIntegral lim) $ BSS.fromShort keys
     let (prefix, suffix) = BS.span (\x -> x < key) relevant
     if (BS.length suffix > 0 && BS.head suffix == key) then
-        (keys, fromIntegral $ BS.length prefix)
+        (keys, fromIntegral $ BS.length prefix, False)
     else do
         let insertedIx = fromIntegral $ BS.length prefix
         let suff = if BS.length remainder > 0 then BS.append suffix (BS.init remainder) else suffix
-        (BSS.toShort $ BS.append (BS.snoc prefix key) suff, insertedIx)
+        (BSS.toShort $ BS.append (BS.snoc prefix key) suff, insertedIx, True)
 
 removeKey :: BSS.ShortByteString -> Word8 -> Word8 -> (BSS.ShortByteString, Maybe Word8)
 removeKeys keys _ 0 = (keys, Nothing)
@@ -210,13 +218,16 @@ setChild n@(Node256 c p _ _) key child = n{ numKeys = newNumKeys, pointers = new
     where newNumKeys = if isEmpty $ indexSmallArray p (fromIntegral key) then c + 1 else c
           newPointers = insertChild p key child    
 setChild n@(Node48 c k p _ _) key child = n{ numKeys = newNumKeys, partialKeys = newKeys, pointers = newPointers }
-    where (newKeys, ix) = insertKey k key c
-          newNumKeys = if isEmpty $ indexSmallArray p (fromIntegral ix) then c + 1 else c
+    where (newKeys, _, _) = insertKey k key c
+          newNumKeys = if isEmpty $ indexSmallArray p (fromIntegral key) then c + 1 else c
           newPointers = insertChild p key child 
 setChild node key child = node{ numKeys = newNumKeys, partialKeys = newKeys, pointers = newPointers }
-    where (newKeys, ix) = insertKey (partialKeys node) key (numKeys node)
-          newPointers = insertChildAt (pointers node) (fromIntegral ix) child 
-          newNumKeys = if isEmpty $ indexSmallArray newPointers (min (fromIntegral $ numKeys node) ((sizeofSmallArray newPointers) - 1)) then (numKeys node) else (fromIntegral  (numKeys node) + 1)
+    where (newKeys, ix, new) = insertKey (partialKeys node) key (numKeys node)
+          newPointers = case new of
+                False -> insertChild (pointers node) (fromIntegral ix) child
+                True -> insertChildAt (pointers node) (fromIntegral ix) child 
+          newNumKeys = foldl (\m i -> if isEmpty $ indexSmallArray newPointers i then m else m + 1) 0 [0..((sizeofSmallArray newPointers) - 1)]
+            --if isEmpty $ indexSmallArray newPointers (min (fromIntegral $ numKeys node) ((sizeofSmallArray newPointers) - 1)) then (numKeys node) else (fromIntegral  (numKeys node) + 1)
           
 unsetChild :: Node a -> Word8 -> Node a
 unsetChild Empty _ = undefined

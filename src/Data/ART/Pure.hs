@@ -18,12 +18,15 @@ data DeletionStatus = NotFound |
 -- INSERT
 insert :: Node a -> BS.ByteString -> a -> Int -> Node a
 insert Empty bs val _ = Leaf bs val
-insert leaf@(Leaf k l) key val depth = newParent
-    where pLen = checkPrefix leaf key depth
-          sharedPrefix = resizePrefix (BSS.toShort $ BS.take pLen $ BS.drop depth key) maxPrefixSize
-          __newParent = newNode4{prefix = sharedPrefix, prefixLen = (fromIntegral pLen)}
-          _newParent = addChild __newParent (BS.index k (depth + pLen)) leaf
-          newParent = addChild _newParent (BS.index key (depth + pLen)) (Leaf key val)
+insert leaf@(Leaf k l) key val depth = do
+    let pLen = checkPrefix leaf key depth
+    case k == key of
+        True -> Leaf k val
+        False -> do
+            let sharedPrefix = resizePrefix (BSS.toShort $ BS.take pLen $ BS.drop depth key) maxPrefixSize
+            let newParent = newNode4{ prefix = sharedPrefix, prefixLen = (fromIntegral pLen) }
+            let newParent' = addChild newParent (BS.index k (depth + pLen)) leaf
+            addChild newParent' (BS.index key (depth + pLen)) (Leaf key val)
 insert node key val depth = newNode
     where   pLen = checkPrefix node key depth
             prefixLength = min (fromIntegral $ prefixLen node) maxPrefixSize
@@ -53,7 +56,9 @@ insert node key val depth = newNode
 search :: Node a -> BS.ByteString -> Int -> Node a
 search Empty _ _ = Empty
 -- SLIGHT MODIFICATION: ALWAYS CHECKS FULL KEY RATHER THAN PREFIX
-search leaf@(Leaf _ _) key depth = if (leafMatches leaf key depth) then leaf else Empty
+search leaf@(Leaf _ _) key depth = case leafMatches leaf key depth of
+    True -> leaf
+    False -> Empty
 search node key depth = if key == BS.empty then Empty else do
   -- Test to make sure key matches any on-node prefix
   let prefixLength = min (fromIntegral $ prefixLen node) maxPrefixSize
