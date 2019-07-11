@@ -12,20 +12,12 @@ import qualified Data.ByteString.Short as BSS
 maxPrefixSize :: Int
 maxPrefixSize = 8
 
-data Node a = Node4 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
-              Node16 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
-              Node48 { numKeys :: Word8, partialKeys :: !BSS.ShortByteString, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
-              Node256 { numKeys :: Word8, pointers :: (SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
+data Node a = Node4 { numKeys :: !Word8, partialKeys :: !BSS.ShortByteString, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
+              Node16 { numKeys :: !Word8, partialKeys :: !BSS.ShortByteString, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
+              Node48 { numKeys :: !Word8, partialKeys :: !BSS.ShortByteString, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
+              Node256 { numKeys :: !Word8, pointers :: {-# UNPACK #-} !(SmallArray (Node a)), prefixLen :: !Word8, prefix :: !BSS.ShortByteString } |
               Leaf BS.ByteString a |
               Empty deriving (Eq, Show)
-
--- instance Show (Node a) where
---     show Empty = "Empty"
---     show (Leaf k v ) = "Leaf " ++ (show k)
---     show (Node4 c k pt pl p ) = "Node4 " ++ (show c) ++ " " ++ (show k) ++ " " ++ (show pt) ++ " " ++ (show pl) ++ " " ++ (show p)
---     show (Node16 c k pt pl p ) = "Node16 " ++ (show c) ++ " " ++ (show k) ++ " " ++ (show pt) ++ " " ++ (show pl) ++ " " ++ (show p)
---     show (Node48 _ _ _ _ _ ) = "Node48"
---     show (Node256 _ _ _ _ ) = "Node256"
 
 isEmpty :: Node a -> Bool
 isEmpty Empty = True
@@ -87,7 +79,6 @@ isFull (Node256 c _ _ _) = False
 
 wouldBeFull :: Node a -> Word8 -> Bool
 wouldBeFull node key = isFull node && (keyIndex node key) == Nothing
--- Put growNode here!
 
 resizePointers :: SmallArray (Node a) -> Int -> SmallArray (Node a)
 resizePointers ptrs len = runST $ do
@@ -107,11 +98,17 @@ growNode n@(Node256 _ _ _ _) = undefined
 growNode n@(Node4 c k pt pl p) = newNode16{ numKeys = c, partialKeys = newKeys, pointers = newPointers, prefixLen = pl, prefix = p }
     where newKeys = BSS.toShort $ BS.append (BSS.fromShort k) (BS.replicate 12 0)
           newPointers = resizePointers pt 16
--- growNode n@(Node4 c keys pt pl p) = newNode{ prefixLen = pl, prefix = p }
---     where newNode = foldl (\n (k, i) -> setChild n k (indexSmallArray pt i)) newNode16 (zip (BSS.unpack keys) [0..3])
-growNode n@(Node16 c k pt pl p) = newNode
-    where _newNode = newNode48{ prefixLen = pl, prefix = p }
-          newNode = foldl (\n (k, i) -> setChild n k (indexSmallArray pt i)) _newNode (zip (BSS.unpack k) [0..])
+growNode n@(Node16 c k pt pl p) = newNode48{ numKeys = c, partialKeys = newKeys, pointers = newPointers, prefixLen = pl, prefix = p }
+    where newKeys = BSS.toShort $ BS.append (BSS.fromShort k) (BS.replicate 32 0)
+          newPointers = runST $ do
+            np <- newSmallArray 256 Empty
+            mapM_ (\(k, i) -> do
+                writeSmallArray np (fromIntegral k) (indexSmallArray pt i)
+                ) (zip (BSS.unpack k) [0..((fromIntegral c) - 1)])
+            unsafeFreezeSmallArray np
+-- growNode n@(Node16 c k pt pl p) = newNode
+--     where _newNode = newNode48{ prefixLen = pl, prefix = p }
+--           newNode = foldl (\n (k, i) -> setChild n k (indexSmallArray pt i)) _newNode (zip (BSS.unpack k) [0..])
 growNode (Node48 c k pt pl p) = Node256 c pt pl p
 
 shrinkNode :: Node a -> Node a
@@ -183,13 +180,13 @@ insertChild ptrs ix child = runST $ do
 insertChildAt :: SmallArray (Node a) -> Int -> Node a -> SmallArray (Node a)
 insertChildAt ptrs ix child = runST $ do
     let s = sizeofSmallArray ptrs
-    new <- newSmallArray s Empty
+    new <- thawSmallArray ptrs 0 s
     writeSmallArray new ix child
     if ix == 0 then do
         copySmallArray new 1 ptrs 0 (s - 1)
     else do
-        let len = min ix s
-        copySmallArray new 0 ptrs 0 len
+        -- let len = min ix s
+        -- copySmallArray new 0 ptrs 0 len
         let destinationOffset = min (ix + 1) s
         let sourceOffset = min ix s
         let length = max (s - ix - 1) 0

@@ -6,27 +6,25 @@ import Data.ART.Node
 import Data.Word
 import Control.Monad
 import Data.IORef
+import Data.ByteString.Random
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString as BSC
 import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as MV
 import qualified Data.Vector.Unboxed as UV
 import qualified Data.Vector.Unboxed.Mutable as UMV
+import qualified Data.List as L
+import Test.QuickCheck.Monadic (assert, monadicIO, pick, pre, run)
 
-isEmpty :: Node a -> Bool
-isEmpty Empty = True
-isEmpty _ = False
-
-isNode16 :: Node a -> Bool
-isNode16 (Node16 _ _ _ _ _) = True
-isNode16 _ = False
-
-isNode48 :: Node a -> Bool
-isNode48 (Node48 _ _ _ _ _) = True
-isNode48 _ = False
-
-isNode256 :: Node a -> Bool
-isNode256 (Node256 _ _ _ _) = True
-isNode256 _ = False
+keysSorted :: [Word8] -> IO Bool
+keysSorted keys = do
+    node <- newNode4
+    node <- foldM (\n k -> insert n (BSC.pack [k]) k 0) node keys
+    if isNode256 node then return True else do
+        nodeKeys <- UV.freeze $ partialKeys node
+        nodeKeys <- pure $ UV.toList nodeKeys
+        nKeys <- (readIORef $ numKeys node) >>= (return . fromIntegral)
+        return $ (take nKeys $ nodeKeys) == (L.sort $ take nKeys $ nodeKeys)
 
 main :: IO ()
 main = hspec $ do
@@ -66,7 +64,7 @@ main = hspec $ do
                 node <- insert node (BS.pack "abcde1") 0 0
                 node <- insert node (BS.pack "abcde2") 1 0
                 p <- UV.freeze $ prefix node
-                p `shouldBe` (UV.fromList ([97,98,99,100,101] :: [Word8]))
+                (UV.take (fromIntegral $ prefixLen node) p) `shouldBe` (UV.fromList ([97,98,99,100,101] :: [Word8]))
 
     describe "Search" $ do
         it "should return empty when searching empty node" $ do
@@ -128,6 +126,37 @@ main = hspec $ do
             result `shouldBe` Complete
             result <- search node (BS.pack $ "1" ++ prefix ++ "1") 0
             (isEmpty result) `shouldBe` True
-
-    -- describe "Internals" $ do
-    --     describe "shouldGrow"
+    describe "In practice" $ do
+        it "should store and retrieve 17 random keys" $ do
+            randomKeys <- mapM random (take 17 $ repeat 10)
+            node <- foldM (\n k -> insert n k k 0) Empty randomKeys
+            results <- mapM (\k -> search node k 0) randomKeys
+            isEmpty node `shouldBe` False
+            mapM_ (\k -> do
+                n <- search node k 0
+                isEmpty n `shouldBe` False
+                ((\(Leaf k v) -> k) n) `shouldBe` k
+                ) randomKeys
+        it "should store and retrieve 49 random keys" $ do
+            randomKeys <- mapM random (take 49 $ repeat 10)
+            node <- foldM (\n k -> insert n k k 0) Empty randomKeys
+            results <- mapM (\k -> search node k 0) randomKeys
+            isEmpty node `shouldBe` False
+            mapM_ (\k -> do
+                n <- search node k 0
+                isEmpty n `shouldBe` False
+                ((\(Leaf k v) -> k) n) `shouldBe` k
+                ) randomKeys
+        it "should store and retrieve 1k of random keys" $ do
+            randomKeys <- mapM random (take 1000 $ repeat 10)
+            node <- foldM (\n k -> insert n k k 0) Empty randomKeys
+            results <- mapM (\k -> search node k 0) randomKeys
+            isEmpty node `shouldBe` False
+            mapM_ (\k -> do
+                n <- search node k 0
+                isEmpty n `shouldBe` False
+                ((\(Leaf k v) -> k) n) `shouldBe` k
+                ) randomKeys
+    -- -- describe "in practice" $ do
+    -- --     it "should insert any arbitrary set of keys in sorted order" $ do
+    -- --         property keysSorted

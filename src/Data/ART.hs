@@ -45,68 +45,62 @@ instance Eq (DeletionStatus a) where
 
 -- INSERT
 insert :: Node a -> BS.ByteString -> a -> Int -> IO (Node a)
-insert Empty bs val _= do
-  return $ Leaf bs val
-insert leaf@(Leaf k l) key val depth = do
-  -- Accumulate prefix for new parent
-  pLen <- checkPrefix leaf key depth
-  let sharedPrefix = BS.take pLen $ BS.drop depth key
-  sharedPrefixVector <- UV.thaw $ UV.fromList $ BS.unpack $ BS.take maxPrefixSize sharedPrefix
-  -- Make new parent
-  _newParent <- newNode4
-  let newParent = _newParent{prefix = sharedPrefixVector, prefixLen = (fromIntegral pLen)}
-  setChild newParent (BS.index k (depth + pLen)) leaf
-  -- _newParent <- superAddChild newParent (BS.index k (depth + pLen)) leaf
-  __newParent <- superAddChild newParent (BS.index key (depth + pLen)) (Leaf key val)
-  return __newParent
+insert Empty bs val _ = return $ Leaf bs val
+insert leaf@(Leaf k l) key val depth = case k == key of
+    True -> return $ Leaf k val
+    False -> do
+      -- Accumulate prefix for new parent
+      pLen <- checkPrefix leaf key depth
+      let sharedPrefix = BS.take pLen $ BS.drop depth key
+      sharedPrefixVector <- UV.thaw $ UV.fromList $ BS.unpack $ BS.take maxPrefixSize sharedPrefix
+      sharedPrefixVector <- resizePrefix sharedPrefixVector maxPrefixSize
+      -- Make new parent
+      newParent <- newNode4
+      newParent <- pure $ newParent{prefix = sharedPrefixVector, prefixLen = (fromIntegral pLen)}
+      setChild newParent (BS.index k (depth + pLen)) leaf
+      setChild newParent (BS.index key (depth + pLen)) (Leaf key val)
+      return newParent
 insert node key val depth = do
   pLen <- checkPrefix node key depth
   let prefixLength = min (fromIntegral $ prefixLen node) maxPrefixSize
   case pLen == prefixLength of
     False -> do -- Prefix length mismatch! Split the prefix and add a new node
-      _newNode <- newNode4
-      let _sharedPrefixVector = UMV.take pLen (prefix node)
-      sharedPrefixVector <- UMV.grow _sharedPrefixVector (maxPrefixSize - (UMV.length _sharedPrefixVector))
-      let __newNode = _newNode{prefix = sharedPrefixVector, prefixLen = (fromIntegral pLen)}
+      newNode <- newNode4
+      sharedPrefixVector <- pure $ UMV.take pLen (prefix node)
+      sharedPrefixVector <- resizePrefix sharedPrefixVector maxPrefixSize
+      newNode <- pure $ newNode{prefix = sharedPrefixVector, prefixLen = (fromIntegral pLen)}
       -- addChild newNode (BS.index key (depth + pLen)) (Leaf key val)
-      newNode <- superAddChild __newNode (BS.index key (depth + pLen)) (Leaf key val)
-      let _sharedPrefixVector = UMV.drop pLen (prefix node)
-      sharedPrefixVector <- UMV.grow _sharedPrefixVector (maxPrefixSize - (UMV.length _sharedPrefixVector))
-      let newChild = node{ prefixLen = fromIntegral $ (prefixLen node) - (fromIntegral $ pLen + 1), prefix = sharedPrefixVector}
+      setChild newNode (BS.index key (depth + pLen)) (Leaf key val)
+      unsharedPrefixVector <- pure $ UMV.drop pLen (prefix node)
+      unsharedPrefixVector <- resizePrefix unsharedPrefixVector maxPrefixSize
+      let newChild = node{ prefixLen = fromIntegral $ (prefixLen node) - (fromIntegral $ pLen + 1), prefix = unsharedPrefixVector}
       newKey <- UMV.read (prefix newChild) 0
-      -- addChild newNode newKey newChild
-      finalNode <- superAddChild newNode newKey newChild
-      return finalNode
+      setChild newNode newKey newChild
+      return newNode
     True -> do -- No length mismatch, this is correct so far
       let newDepth = fromIntegral $ depth + (fromIntegral $ prefixLen node)
       let keyByte = BS.index key newDepth
-      ix <- keyIndex node keyByte
-      case (ix) of
-        Just i -> do
-          childKey <- getKey node i
-          child <- fmap fromJust (maybeGetChild node childKey)
-          case child of
-            Empty -> do -- If child is empty, replace with Leaf
-              MV.write (pointers node) i (Leaf key val)
-              return node
-            l@(Leaf kk vv) -> do -- If leaf, insert replacement thing
+      c <- maybeGetChild node keyByte
+      case c of
+          Nothing -> do
+            superAddChild node keyByte (Leaf key val)
+          Just child -> case child of
+            Empty -> superAddChild node keyByte (Leaf key val)
+            l@(Leaf kk vv) -> do
               newChild <- insert l key val (depth + 1)
-              MV.write (pointers node) i newChild
-              return node
-            _ -> do -- If child is node, check size, prepare to grow it if necessary -- actually, do this elsewhere
-                newestChild <- insert child key val (depth + 1)
-                MV.write (pointers node) i newestChild
-                return node
-        Nothing -> do -- New thing!
-          superAddChild node (BS.index key newDepth) (Leaf key val)
+              superAddChild node keyByte newChild
+            _ -> do
+              newChild <- insert child key val (depth + 1)
+              superAddChild node keyByte newChild
 
 -- SEARCH
 search :: Node a -> BS.ByteString -> Int -> IO (Node a)
-search Empty _ _ = do
-  return Empty
-search leaf@(Leaf _ _) key depth = do
+search Empty _ d = return Empty
+search leaf@(Leaf k v) key depth = case leafMatches leaf key depth of
+  True -> return leaf
+  False -> return Empty
   -- SLIGHT MODIFICATION: ALWAYS CHECKS FULL KEY RATHER THAN PREFIX
-  return $ if (leafMatches leaf key depth) then leaf else Empty
+  -- return $ if (leafMatches leaf key depth) then leaf else Empty
 search node key depth = if key == BS.empty then return Empty else do
   -- Test to make sure key matches any on-node prefix
   let prefixLength = min (fromIntegral $ prefixLen node) maxPrefixSize
@@ -154,29 +148,3 @@ remove node key depth = do
               MV.write (pointers node) keyIndex newChild
               return Complete
             Complete -> return Complete
-
--- demo :: IO ()
--- demo = do
---   let newART = Empty :: Node String
---   print "adding blah"
---   newART <- insert newART (BS.pack "0blah") "blah" 0
---   print "adding clah"
---   newART <- insert newART (BS.pack "0clah") "clah" 0
---   print "adding dlah"
---   newART <- insert newART (encode "0dlah") "dlah" 0
---   print "printing node"
---   printNode newART
---   print "searching for blah"
---   result <- search newART (encode "0blah") 0
---   printNode result
---   print "searching for dlah"
---   result2 <- search newART (encode "0dlah") 0
---   printNode result2
---   print "searching for bbbb"
---   result2 <- search newART (encode "bbbb") 0
---   printNode result2
---   remove newART (encode "0blah") 0
---   print "searching for blah again"
---   result2 <- search newART (encode "0blah") 0
---   printNode result2
---   return ()
